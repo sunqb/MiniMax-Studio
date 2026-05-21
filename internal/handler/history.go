@@ -16,9 +16,10 @@ func (h *Handler) HistoryList(c *gin.Context) {
 	size, _ := strconv.Atoi(c.DefaultQuery("size", "20"))
 
 	records, total, err := h.hist.List(c.Request.Context(), history.ListParams{
-		Type: c.Query("type"),
-		Page: page,
-		Size: size,
+		Type:   c.Query("type"),
+		Source: c.Query("source"),
+		Page:   page,
+		Size:   size,
 	})
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

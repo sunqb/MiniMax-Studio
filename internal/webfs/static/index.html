@@ -498,6 +498,23 @@
         </div>
       </div>
     </div>
+
+    <!-- 应用市集历史 -->
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+        <div class="card-title" style="margin:0">📦 应用生成历史</div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="app-hist-type" style="width:auto;padding:6px 10px" onchange="loadAppHistory(1)">
+            <option value="">全部类型</option>
+            <option value="tts">🎙️ 语音</option>
+            <option value="clone">🔊 声音复刻</option>
+          </select>
+          <button class="btn btn-secondary" onclick="loadAppHistory(1)" style="padding:6px 14px">🔄 刷新</button>
+        </div>
+      </div>
+      <div id="app-hist-list"><div style="color:var(--text2);text-align:center;padding:24px">加载中...</div></div>
+      <div id="app-hist-pagination" style="display:flex;justify-content:center;gap:8px;margin-top:14px"></div>
+    </div>
   </div>
 
   <!-- ===== 应用：音色复刻配音 ===== -->
@@ -686,6 +703,7 @@ function switchPanel(name) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'history') loadHistory(1);
+  else if (name === 'apps') loadAppHistory(1);
 }
 
 // 兼容旧调用（应用市集内部跳转用）
@@ -1270,7 +1288,7 @@ async function loadHistory(page) {
   document.getElementById('hist-pagination').innerHTML = '';
 
   try {
-    const qs = new URLSearchParams({ page: histPage, size: 20 });
+    const qs = new URLSearchParams({ page: histPage, size: 20, source: 'atomic' });
     if (type) qs.set('type', type);
     const resp = await fetchT(API + '/api/history?' + qs, {}, 10000);
     const data = await resp.json();
@@ -1293,15 +1311,13 @@ async function loadHistory(page) {
       const r2Tag = r.audio_url
         ? `<a href="${r.audio_url}" target="_blank" style="font-size:0.75rem;color:var(--success);text-decoration:none;white-space:nowrap" title="${r.audio_url}">☁️ R2</a>`
         : '';
-      const appSource = r.params?.app_source;
-      const appSourceTag = appSource ? `<span style="font-size:0.72rem;background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px;margin-right:4px">📦 ${escHtml(appSource)}</span>` : '';
-      const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!==''&&k!=='app_source').map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
+      const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!=='').map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
       const recJson = encodeURIComponent(JSON.stringify(r));
       return `<tr id="hist-row-${r.id}" style="border-bottom:1px solid var(--border)">
         <td style="padding:10px 8px;font-size:0.82rem;color:var(--text2)">${date}</td>
         <td style="padding:10px 8px"><span class="badge badge-info">${HIST_TYPE_LABEL[r.type]||r.type}</span></td>
         <td style="padding:10px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title}">${r.title}</td>
-        <td style="padding:10px 8px;font-size:0.78rem;color:var(--text2);max-width:180px;overflow:hidden">${appSourceTag}${paramsStr}</td>
+        <td style="padding:10px 8px;font-size:0.78rem;color:var(--text2);max-width:180px;overflow:hidden">${paramsStr}</td>
         <td style="padding:10px 8px;color:var(--text2);font-size:0.82rem">${size}</td>
         <td style="padding:10px 8px;white-space:nowrap">
           <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="showHistDetail(JSON.parse(decodeURIComponent('${recJson}')))">🔍 详情</button>
@@ -1347,6 +1363,94 @@ async function loadHistory(page) {
     }
   } catch(e) {
     container.innerHTML = `<div style="color:var(--error);padding:16px">加载失败：${e.message}</div>`;
+  }
+}
+
+// ===== 应用市集历史 =====
+let appHistPage = 1;
+async function loadAppHistory(page) {
+  appHistPage = page || 1;
+  const type = document.getElementById('app-hist-type').value;
+  const container = document.getElementById('app-hist-list');
+  container.innerHTML = '<div style="color:var(--text2);text-align:center;padding:24px">加载中...</div>';
+  document.getElementById('app-hist-pagination').innerHTML = '';
+  try {
+    const qs = new URLSearchParams({ page: appHistPage, size: 20, source: 'app' });
+    if (type) qs.set('type', type);
+    const resp = await fetchT(API + '/api/history?' + qs, {}, 10000);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    const records = data.records || [];
+    if (records.length === 0) {
+      container.innerHTML = '<div style="color:var(--text2);text-align:center;padding:24px">暂无应用历史记录</div>';
+      return;
+    }
+    const rows = records.map(r => {
+      const date = new Date(r.created_at).toLocaleString('zh-CN');
+      const size = r.size > 0 ? (r.size > 1048576 ? (r.size/1048576).toFixed(1)+' MB' : (r.size/1024).toFixed(1)+' KB') : '—';
+      const playBtn = r.audio_url
+        ? r.type === 'image'
+          ? `<a href="${r.audio_url}" target="_blank" class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem;text-decoration:none">🖼 查看</a>`
+          : `<button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="playHistAudio('${r.id}','${encodeURIComponent(r.audio_url)}')">▶ 播放</button>`
+        : '';
+      const r2Tag = r.audio_url
+        ? `<a href="${r.audio_url}" target="_blank" style="font-size:0.75rem;color:var(--success);text-decoration:none;white-space:nowrap" title="${r.audio_url}">☁️ R2</a>`
+        : '';
+      const appBadge = r.app_source ? `<span style="font-size:0.72rem;background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px;margin-right:4px">📦 ${escHtml(r.app_source)}</span>` : '';
+      const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!=='').map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
+      const recJson = encodeURIComponent(JSON.stringify(r));
+      return `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:10px 8px;font-size:0.82rem;color:var(--text2)">${date}</td>
+        <td style="padding:10px 8px"><span class="badge badge-info">${HIST_TYPE_LABEL[r.type]||r.type}</span></td>
+        <td style="padding:10px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title}">${r.title}</td>
+        <td style="padding:10px 8px;font-size:0.78rem;color:var(--text2);max-width:180px;overflow:hidden">${appBadge}${paramsStr}</td>
+        <td style="padding:10px 8px;color:var(--text2);font-size:0.82rem">${size}</td>
+        <td style="padding:10px 8px;white-space:nowrap">
+          <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="showHistDetail(JSON.parse(decodeURIComponent('${recJson}')))">🔍 详情</button>
+          ${playBtn} ${r2Tag}
+          <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem;color:var(--error)" onclick="deleteAppHistRecord('${r.id}',this)">🗑️</button>
+        </td>
+      </tr>`;
+    }).join('');
+    container.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:0.88rem">
+      <thead><tr style="border-bottom:1px solid var(--border);color:var(--text2)">
+        <th style="text-align:left;padding:8px">时间</th>
+        <th style="text-align:left;padding:8px">类型</th>
+        <th style="text-align:left;padding:8px">标题</th>
+        <th style="text-align:left;padding:8px">来源/参数</th>
+        <th style="text-align:left;padding:8px">大小</th>
+        <th style="text-align:left;padding:8px">操作</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+    const total = data.total || 0;
+    const totalPages = Math.ceil(total / 20);
+    if (totalPages > 1) {
+      const pages = [];
+      pages.push(`<span style="color:var(--text2);font-size:0.85rem">共 ${total} 条</span>`);
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(`<button class="btn ${i===appHistPage?'btn-primary':'btn-secondary'}" style="padding:4px 10px;font-size:0.82rem" onclick="loadAppHistory(${i})">${i}</button>`);
+      }
+      document.getElementById('app-hist-pagination').innerHTML = pages.join('');
+    } else if (total > 0) {
+      document.getElementById('app-hist-pagination').innerHTML = `<span style="color:var(--text2);font-size:0.82rem">共 ${total} 条</span>`;
+    }
+  } catch(e) {
+    container.innerHTML = `<div style="color:var(--error);padding:16px">加载失败：${e.message}</div>`;
+  }
+}
+
+async function deleteAppHistRecord(id, btn) {
+  if (!confirm('确定删除此记录？')) return;
+  btn.disabled = true;
+  try {
+    const resp = await fetchT(API + '/api/history/delete', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({id}) }, 10000);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    loadAppHistory(appHistPage);
+  } catch(e) {
+    alert('删除失败：' + e.message);
+    btn.disabled = false;
   }
 }
 

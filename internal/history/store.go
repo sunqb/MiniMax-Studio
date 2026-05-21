@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -17,13 +18,14 @@ import (
 // Record 代表一次生成操作的历史记录
 type Record struct {
 	ID        string         `json:"id"`
-	Type      string         `json:"type"`       // music / tts / text / clone
+	Type      string         `json:"type"`       // music / tts / text / clone / image
 	CreatedAt int64          `json:"created_at"` // Unix毫秒
 	Title     string         `json:"title"`
 	Params    map[string]any `json:"params,omitempty"`
 	AudioURL  string         `json:"audio_url,omitempty"` // R2 公开URL
 	Size      int64          `json:"size,omitempty"`
 	Extra     map[string]any `json:"extra,omitempty"`
+	AppSource string         `json:"app_source,omitempty"` // 来源应用，空=原子功能直接调用
 }
 
 // Store 是基于 SQLite 的历史记录存储，DB 文件放在 data/ 目录下
@@ -50,7 +52,8 @@ func New(dbPath string) (*Store, error) {
 }
 
 func migrate(db *sql.DB) error {
-	_, err := db.Exec(`
+	// 1. 创建基础表（不含 app_source，兼容旧库）
+	if _, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS history (
 			id         TEXT    PRIMARY KEY,
 			type       TEXT    NOT NULL,
@@ -63,8 +66,16 @@ func migrate(db *sql.DB) error {
 		);
 		CREATE INDEX IF NOT EXISTS idx_hist_type_time ON history(type, created_at DESC);
 		CREATE INDEX IF NOT EXISTS idx_hist_time      ON history(created_at DESC);
-	`)
-	return err
+	`); err != nil {
+		return err
+	}
+	// 2. 兼容旧数据库：若 app_source 列不存在则添加（已有则忽略）
+	_, _ = db.Exec(`ALTER TABLE history ADD COLUMN app_source TEXT NOT NULL DEFAULT ''`)
+	// 3. 创建 app_source 索引（表与列已确保存在）
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_hist_app ON history(app_source, created_at DESC)`); err != nil {
+		return err
+	}
+	return nil
 }
 
 // Add 插入一条记录，自动生成 ID 和 CreatedAt
@@ -84,19 +95,20 @@ func (s *Store) Add(ctx context.Context, r *Record) error {
 	extra, _ := json.Marshal(r.Extra)
 
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO history (id, type, created_at, title, params, audio_url, size, extra)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO history (id, type, created_at, title, params, audio_url, size, extra, app_source)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ID, r.Type, r.CreatedAt, r.Title,
-		string(params), r.AudioURL, r.Size, string(extra),
+		string(params), r.AudioURL, r.Size, string(extra), r.AppSource,
 	)
 	return err
 }
 
 // ListParams 查询参数
 type ListParams struct {
-	Type string // 空 = 所有类型
-	Page int    // 1-based
-	Size int    // 每页条数，默认20，最大100
+	Type   string // 空 = 所有类型
+	Source string // "app"=仅应用市集, "atomic"=仅原子功能, ""=全部
+	Page   int    // 1-based
+	Size   int    // 每页条数，默认20，最大100
 }
 
 // List 按时间倒序分页返回记录，同时返回总数
@@ -109,34 +121,33 @@ func (s *Store) List(ctx context.Context, p ListParams) ([]*Record, int64, error
 	}
 	offset := (p.Page - 1) * p.Size
 
-	var (
-		countQuery string
-		listQuery  string
-		args       []any
-	)
+	// 构建 WHERE 子句
+	var conditions []string
+	var args []any
 	if p.Type != "" {
-		countQuery = `SELECT COUNT(*) FROM history WHERE type = ?`
-		listQuery = `SELECT id, type, created_at, title, params, audio_url, size, extra
-		             FROM history WHERE type = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`
-		args = []any{p.Type}
-	} else {
-		countQuery = `SELECT COUNT(*) FROM history`
-		listQuery = `SELECT id, type, created_at, title, params, audio_url, size, extra
-		             FROM history ORDER BY created_at DESC LIMIT ? OFFSET ?`
-		args = []any{}
+		conditions = append(conditions, "type = ?")
+		args = append(args, p.Type)
+	}
+	switch p.Source {
+	case "app":
+		conditions = append(conditions, "app_source != ''")
+	case "atomic":
+		conditions = append(conditions, "app_source = ''")
+	}
+
+	where := ""
+	if len(conditions) > 0 {
+		where = " WHERE " + strings.Join(conditions, " AND ")
 	}
 
 	var total int64
-	if err := s.db.QueryRowContext(ctx, countQuery, args...).Scan(&total); err != nil {
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM history"+where, args...).Scan(&total); err != nil {
 		return nil, 0, err
 	}
 
-	var queryArgs []any
-	if p.Type != "" {
-		queryArgs = []any{p.Type, p.Size, offset}
-	} else {
-		queryArgs = []any{p.Size, offset}
-	}
+	listQuery := "SELECT id, type, created_at, title, params, audio_url, size, extra, app_source FROM history" +
+		where + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+	queryArgs := append(args, p.Size, offset)
 
 	rows, err := s.db.QueryContext(ctx, listQuery, queryArgs...)
 	if err != nil {
@@ -149,7 +160,7 @@ func (s *Store) List(ctx context.Context, p ListParams) ([]*Record, int64, error
 		var r Record
 		var params, extra string
 		if err := rows.Scan(&r.ID, &r.Type, &r.CreatedAt, &r.Title,
-			&params, &r.AudioURL, &r.Size, &extra); err != nil {
+			&params, &r.AudioURL, &r.Size, &extra, &r.AppSource); err != nil {
 			return nil, 0, err
 		}
 		_ = json.Unmarshal([]byte(params), &r.Params)

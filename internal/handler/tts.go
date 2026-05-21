@@ -63,15 +63,15 @@ func (h *Handler) TTSSynthesize(c *gin.Context) {
 		Type:  "tts",
 		Title: history.Truncate(req.Text, 60),
 		Params: map[string]any{
-			"model":      req.Model,
-			"voice_id":   req.VoiceID,
-			"speed":      req.Speed,
-			"vol":        req.Vol,
-			"pitch":      req.Pitch,
-			"format":     req.Format,
-			"app_source": req.AppSource,
+			"model":    req.Model,
+			"voice_id": req.VoiceID,
+			"speed":    req.Speed,
+			"vol":      req.Vol,
+			"pitch":    req.Pitch,
+			"format":   req.Format,
 		},
-		Size: int64(len(audioData)),
+		Size:      int64(len(audioData)),
+		AppSource: req.AppSource,
 	}
 	if err := h.hist.Add(c.Request.Context(), rec); err != nil {
 		log.Printf("[history] tts: %v", err)
