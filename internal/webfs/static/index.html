@@ -21,7 +21,7 @@
     --radius: 10px;
   }
   body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
-  .app { max-width: 900px; margin: 0 auto; padding: 24px 16px; }
+  .app { max-width: 900px; margin: 0 auto; padding: 24px 28px; }
   header { display: flex; align-items: center; gap: 12px; margin-bottom: 32px; }
   header h1 { font-size: 1.6rem; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
   header span { font-size: 0.85rem; color: var(--text2); }
@@ -326,12 +326,12 @@
       <input type="text" id="clone-voice-id" placeholder="MyVoice001" maxlength="256">
       <label>试听文本 <span style="color:var(--text2);font-size:0.8rem">（可选，提供后返回试听音频）</span></label>
       <input type="text" id="clone-preview-text" placeholder="你好，这是我的声音复刻效果。">
-      <div style="display:flex;gap:16px;margin-top:14px">
-        <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="clone-noise"> 降噪处理
+      <div style="display:flex;flex-wrap:wrap;gap:12px 24px;margin-top:14px">
+        <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">
+          <input type="checkbox" id="clone-noise" style="width:auto;padding:0"> 降噪处理
         </label>
-        <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer">
-          <input type="checkbox" id="clone-volume"> 音量归一化
+        <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">
+          <input type="checkbox" id="clone-volume" style="width:auto;padding:0"> 音量归一化
         </label>
       </div>
       <button class="btn btn-primary" id="clone-btn" onclick="cloneVoice()" style="margin-top:16px">🔊 开始复刻</button>
@@ -428,8 +428,9 @@
     </div>
 
     <!-- 结果区 -->
-    <div id="img-result" style="display:none">
-      <div id="img-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:16px"></div>
+    <div id="img-result" class="card" style="display:none">
+      <div class="card-title">生成结果</div>
+      <div id="img-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px"></div>
     </div>
   </div>
 
@@ -467,6 +468,7 @@
             <option value="tts">🎙️ 语音</option>
             <option value="text">📝 文本</option>
             <option value="clone">🔊 声音复刻</option>
+            <option value="image">🖼️ 图像</option>
           </select>
           <button class="btn btn-secondary" onclick="loadHistory(1)" style="padding:6px 14px">🔄 刷新</button>
         </div>
@@ -1047,10 +1049,12 @@ async function loadHistory(page) {
       const date = new Date(r.created_at).toLocaleString('zh-CN');
       const size = r.size > 0 ? (r.size > 1048576 ? (r.size/1048576).toFixed(1)+' MB' : (r.size/1024).toFixed(1)+' KB') : '—';
       const playBtn = r.audio_url
-        ? `<button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="playHistAudio('${r.id}','${encodeURIComponent(r.audio_url)}')">▶ 播放</button>`
+        ? r.type === 'image'
+          ? `<a href="${r.audio_url}" target="_blank" class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem;text-decoration:none">🖼 查看</a>`
+          : `<button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="playHistAudio('${r.id}','${encodeURIComponent(r.audio_url)}')">▶ 播放</button>`
         : '';
       const r2Tag = r.audio_url
-        ? `<a href="${r.audio_url}" target="_blank" style="font-size:0.75rem;color:var(--success);text-decoration:none;white-space:nowrap" title="${r.audio_url}">☁️ R2</a>`
+        ? `<a href="${r.audio_url}" target="_blank" style="font-size:0.75rem;color:var(--success);text-decoration:none;white-space:nowrap" title="${r.audio_url}">${r.type === 'image' ? '🖼️' : '☁️'} R2</a>`
         : '';
       const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!=='').map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
       const recJson = encodeURIComponent(JSON.stringify(r));
