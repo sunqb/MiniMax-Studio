@@ -271,8 +271,12 @@
       <div class="card-title">音乐生成</div>
       <label>风格描述 <span style="color:var(--text2);font-size:0.8rem">（纯音乐时必填）</span></label>
       <input type="text" id="music-prompt" placeholder="例：流行音乐, 忧郁, 适合在下雨的晚上">
-      <label>歌词 <span style="color:var(--text2);font-size:0.8rem">（非纯音乐时必填，支持 [Verse] [Chorus] 等结构标签）</span></label>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:14px;margin-bottom:6px">
+        <label style="margin:0">歌词 <span style="color:var(--text2);font-size:0.8rem">（非纯音乐时必填，支持 [Verse] [Chorus] 等结构标签）</span></label>
+        <button class="btn btn-secondary" id="lyrics-gen-btn" onclick="generateLyrics()" style="padding:4px 10px;font-size:0.8rem;flex-shrink:0">✨ 生成歌词</button>
+      </div>
       <textarea id="music-lyrics" placeholder="[Verse]&#10;街灯微亮晚风轻抚&#10;影子拉长独自漫步&#10;[Chorus]&#10;推开木门香气弥漫" rows="5"></textarea>
+      <div id="lyrics-gen-status" style="font-size:0.8rem;color:var(--text2);margin-top:5px;margin-bottom:2px;display:none"></div>
       <div class="row" style="margin-top:12px">
         <div>
           <label>模型</label>
@@ -281,14 +285,10 @@
             <option value="music-2.6-free">music-2.6-free（按量付费）</option>
           </select>
         </div>
-        <div style="display:flex;align-items:flex-end;gap:16px;padding-bottom:4px">
+        <div style="display:flex;align-items:flex-end;padding-bottom:4px">
           <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0">
             <input type="checkbox" id="music-instrumental" style="width:auto;padding:0">
             纯音乐（无人声）
-          </label>
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0">
-            <input type="checkbox" id="music-lyrics-optimizer" style="width:auto;padding:0">
-            AI 自动生成歌词
           </label>
         </div>
       </div>
@@ -561,10 +561,9 @@ async function generateMusic() {
         prompt: document.getElementById('music-prompt').value,
         lyrics: document.getElementById('music-lyrics').value,
         is_instrumental: document.getElementById('music-instrumental').checked,
-        lyrics_optimizer: document.getElementById('music-lyrics-optimizer').checked,
         format: 'mp3',
       })
-    });
+    }, 600000);
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || resp.statusText);
 
@@ -583,6 +582,39 @@ async function generateMusic() {
     document.getElementById('music-stats').innerHTML = `<span style="color:var(--error)">错误：${e.message}</span>`;
   } finally {
     setLoading('music-btn', false);
+  }
+}
+
+// ===== 歌词生成 =====
+async function generateLyrics() {
+  const prompt = document.getElementById('music-prompt').value.trim();
+  if (!prompt) { alert('请先填写风格描述，用于生成歌词'); return; }
+  const btn = document.getElementById('lyrics-gen-btn');
+  const statusEl = document.getElementById('lyrics-gen-status');
+  btn._orig = btn.innerHTML;
+  btn.innerHTML = '<span class="spinner"></span> 生成中...';
+  btn.disabled = true;
+  statusEl.style.display = 'none';
+  try {
+    const resp = await fetchT(API + '/api/lyrics/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    }, 60000);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    document.getElementById('music-lyrics').value = data.lyrics;
+    const sourceLabel = data.source === 'llm' ? '大模型生成（MiniMax 配额已用尽）' : 'MiniMax 歌词生成';
+    statusEl.textContent = `✅ 歌词已生成（${sourceLabel}）${data.song_title ? ' · ' + data.song_title : ''}`;
+    statusEl.style.display = 'block';
+    statusEl.style.color = data.source === 'llm' ? 'var(--warning, #f59e0b)' : 'var(--text2)';
+  } catch(e) {
+    statusEl.textContent = `❌ 生成失败：${e.message}`;
+    statusEl.style.display = 'block';
+    statusEl.style.color = 'var(--error)';
+  } finally {
+    btn.innerHTML = btn._orig;
+    btn.disabled = false;
   }
 }
 
@@ -887,12 +919,18 @@ function showHistDetail(r) {
 
   // 附加信息（extra）
   if (r.extra && Object.keys(r.extra).length > 0) {
-    // content 字段单独展示为文本框
-    const { content, ...otherExtra } = r.extra;
+    // content / lyrics 字段单独展示为文本框
+    const { content, lyrics, ...otherExtra } = r.extra;
     if (content) {
       html += `<div class="detail-section">
         <div class="detail-label">生成内容</div>
         <div class="detail-content">${escHtml(content)}</div>
+      </div>`;
+    }
+    if (lyrics) {
+      html += `<div class="detail-section">
+        <div class="detail-label">歌词</div>
+        <div class="detail-content">${escHtml(lyrics)}</div>
       </div>`;
     }
     const remaining = Object.entries(otherExtra).filter(([,v]) => v !== null && v !== '');

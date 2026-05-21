@@ -13,12 +13,11 @@ import (
 )
 
 type MusicGenerateRequest struct {
-	Model           string `json:"model"`
-	Prompt          string `json:"prompt"`
-	Lyrics          string `json:"lyrics"`
-	IsInstrumental  bool   `json:"is_instrumental"`
-	LyricsOptimizer bool   `json:"lyrics_optimizer"`
-	Format          string `json:"format"`
+	Model          string `json:"model"`
+	Prompt         string `json:"prompt"`
+	Lyrics         string `json:"lyrics"`
+	IsInstrumental bool   `json:"is_instrumental"`
+	Format         string `json:"format"`
 }
 
 type MusicGenerateResponse struct {
@@ -42,12 +41,11 @@ func (h *Handler) MusicGenerate(c *gin.Context) {
 	defer cancel()
 
 	audioData, err := h.mm.GenerateMusic(ctx, minimax.MusicParams{
-		Model:           req.Model,
-		Prompt:          req.Prompt,
-		Lyrics:          req.Lyrics,
-		IsInstrumental:  req.IsInstrumental,
-		LyricsOptimizer: req.LyricsOptimizer,
-		Format:          req.Format,
+		Model:          req.Model,
+		Prompt:         req.Prompt,
+		Lyrics:         req.Lyrics,
+		IsInstrumental: req.IsInstrumental,
+		Format:         req.Format,
 	})
 	if err != nil {
 		log.Printf("[music] generate error: %v", err)
@@ -61,13 +59,15 @@ func (h *Handler) MusicGenerate(c *gin.Context) {
 		Type:  "music",
 		Title: history.Truncate(req.Prompt, 60),
 		Params: map[string]any{
-			"model":            req.Model,
-			"prompt":           req.Prompt,
-			"is_instrumental":  req.IsInstrumental,
-			"lyrics_optimizer": req.LyricsOptimizer,
-			"format":           req.Format,
+			"model":           req.Model,
+			"prompt":          req.Prompt,
+			"is_instrumental": req.IsInstrumental,
+			"format":          req.Format,
 		},
 		Size: int64(len(audioData)),
+	}
+	if req.Lyrics != "" {
+		rec.Extra = map[string]any{"lyrics": req.Lyrics}
 	}
 	if err := h.hist.Add(c.Request.Context(), rec); err != nil {
 		log.Printf("[history] music: %v", err)

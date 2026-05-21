@@ -34,6 +34,7 @@ func (h *Handler) Register(r *gin.Engine) {
 		// 音乐合成
 		api.POST("/music/generate", h.MusicGenerate)
 		api.GET("/music/models", h.MusicModels)
+		api.POST("/lyrics/generate", h.LyricsGenerate)
 
 		// 声音复刻
 		api.POST("/voice/clone", h.VoiceClone)
