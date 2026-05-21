@@ -19,14 +19,15 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
 # ===== Runtime Stage =====
 FROM alpine:3.20
 
-RUN apk add --no-cache ca-certificates wget tzdata && \
+RUN apk add --no-cache ca-certificates wget tzdata su-exec && \
     addgroup -S app && adduser -S app -G app
 
 WORKDIR /app
-RUN mkdir -p /app/data && chown app:app /app/data
+RUN mkdir -p /app/data
 COPY --from=builder /build/minimax-studio /app/minimax-studio
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 EXPOSE 8080
-USER app
 
-ENTRYPOINT ["/app/minimax-studio"]
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
