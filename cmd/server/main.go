@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -65,7 +66,15 @@ func main() {
 	h := handler.New(cfg, mmClient, r2Client, histStore)
 	h.Register(r)
 
-	r.StaticFS("/app", http.FS(webfs.FS()))
+	// 静态文件：HTML 禁止缓存，保证重新部署后立即生效
+	staticFS := http.FS(webfs.FS())
+	r.GET("/app/*filepath", func(c *gin.Context) {
+		fp := c.Param("filepath")
+		if strings.HasSuffix(fp, ".html") || fp == "/" || fp == "" {
+			c.Header("Cache-Control", "no-store")
+		}
+		c.FileFromFS(fp, staticFS)
+	})
 	r.GET("/", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "/app/")
 	})
