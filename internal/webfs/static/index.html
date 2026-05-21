@@ -26,10 +26,21 @@
   header h1 { font-size: 1.6rem; background: linear-gradient(135deg, var(--accent), var(--accent2)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
   header span { font-size: 0.85rem; color: var(--text2); }
 
-  .tabs { display: flex; gap: 4px; background: var(--surface); border-radius: var(--radius); padding: 4px; margin-bottom: 24px; }
-  .tab { flex: 1; padding: 10px; border: none; background: transparent; color: var(--text2); cursor: pointer; border-radius: 7px; font-size: 0.9rem; transition: all 0.2s; }
-  .tab.active { background: var(--accent); color: #fff; font-weight: 600; }
-  .tab:hover:not(.active) { background: var(--surface2); color: var(--text); }
+  /* 第一层：两大块 */
+  .nav-main { display: flex; gap: 8px; margin-bottom: 8px; }
+  .nav-main-btn {
+    flex: 1; padding: 14px 10px; border: 1px solid var(--border); background: var(--surface);
+    color: var(--text2); cursor: pointer; border-radius: var(--radius); font-size: 1rem;
+    font-weight: 500; transition: all 0.2s; text-align: center;
+  }
+  .nav-main-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 700; }
+  .nav-main-btn:hover:not(.active) { background: var(--surface2); color: var(--text); border-color: var(--accent2); }
+
+  /* 第二层：原子功能子标签 */
+  .nav-sub { display: flex; gap: 4px; background: var(--surface); border-radius: var(--radius); padding: 4px; margin-bottom: 20px; }
+  .nav-sub-btn { flex: 1; padding: 9px 6px; border: none; background: transparent; color: var(--text2); cursor: pointer; border-radius: 7px; font-size: 0.88rem; transition: all 0.2s; white-space: nowrap; }
+  .nav-sub-btn.active { background: var(--accent); color: #fff; font-weight: 600; }
+  .nav-sub-btn:hover:not(.active) { background: var(--surface2); color: var(--text); }
 
   .panel { display: none; }
   .panel.active { display: block; }
@@ -150,20 +161,25 @@
     <span>文本生成 · 语音合成 · 音乐生成 · 图像生成 · 声音复刻 · 应用市集</span>
   </header>
 
-  <div class="tabs">
-    <button class="tab active" onclick="switchTab('text')">📝 文本生成</button>
-    <button class="tab" onclick="switchTab('tts')">🎙️ 语音合成</button>
-    <button class="tab" onclick="switchTab('music')">🎵 音乐生成</button>
-    <button class="tab" onclick="switchTab('image')">🖼️ 图像生成</button>
-    <button class="tab" onclick="switchTab('clone')">🔊 声音复刻</button>
-    <button class="tab" onclick="switchTab('apps')">🚀 应用</button>
-    <button class="tab" onclick="switchTab('history')">📋 历史记录</button>
-    <span style="color:var(--border);padding:0 2px;align-self:center;font-size:1.2rem">|</span>
-    <button class="tab" onclick="switchTab('files')" style="flex:none;font-size:0.82rem;color:var(--text2)" title="MiniMax 平台文件管理">📁 文件管理</button>
+  <!-- 第一层：两大块 -->
+  <div class="nav-main">
+    <button class="nav-main-btn active" id="nav-apps" onclick="switchSection('apps')">🚀 应用市集</button>
+    <button class="nav-main-btn" id="nav-tools" onclick="switchSection('tools')">🔧 原子功能</button>
+  </div>
+
+  <!-- 第二层：原子功能子标签（默认隐藏） -->
+  <div class="nav-sub" id="nav-sub-tools" style="display:none">
+    <button class="nav-sub-btn" data-panel="text" onclick="switchPanel('text')">📝 文本</button>
+    <button class="nav-sub-btn" data-panel="tts" onclick="switchPanel('tts')">🎙️ 语音</button>
+    <button class="nav-sub-btn" data-panel="music" onclick="switchPanel('music')">🎵 音乐</button>
+    <button class="nav-sub-btn" data-panel="image" onclick="switchPanel('image')">🖼️ 图像</button>
+    <button class="nav-sub-btn" data-panel="clone" onclick="switchPanel('clone')">🔊 复刻</button>
+    <button class="nav-sub-btn" data-panel="history" onclick="switchPanel('history')">📋 历史</button>
+    <button class="nav-sub-btn" data-panel="files" onclick="switchPanel('files')">📁 文件</button>
   </div>
 
   <!-- ===== 文本生成 ===== -->
-  <div id="panel-text" class="panel active">
+  <div id="panel-text" class="panel">
     <div class="card">
       <div class="card-title">文本生成</div>
       <label>系统提示词（可选）</label>
@@ -645,18 +661,46 @@ function fetchT(url, options = {}, ms = 120000) {
   return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(tid));
 }
 
-// 切换 Tab
-function switchTab(name) {
-  const tabNames = ['text','tts','music','image','clone','apps','history','files'];
-  // app-dubbing 是 apps 的子页，高亮 apps tab
-  const activeTabName = name.startsWith('app-') ? 'apps' : name;
-  document.querySelectorAll('.tab').forEach((t, i) => {
-    t.classList.toggle('active', tabNames[i] === activeTabName);
+// 切换第一层（应用市集 / 原子功能）
+function switchSection(section) {
+  document.getElementById('nav-apps').classList.toggle('active', section === 'apps');
+  document.getElementById('nav-tools').classList.toggle('active', section === 'tools');
+  const subNav = document.getElementById('nav-sub-tools');
+  subNav.style.display = section === 'tools' ? '' : 'none';
+  if (section === 'apps') {
+    switchPanel('apps');
+  } else {
+    // 恢复上次选中的原子功能子页，默认 text
+    const last = document.querySelector('.nav-sub-btn.active');
+    switchPanel(last ? last.dataset.panel : 'text');
+  }
+}
+
+// 切换第二层子面板（也供应用内部跳转使用）
+function switchPanel(name) {
+  // 更新子导航高亮（仅原子功能子标签）
+  document.querySelectorAll('.nav-sub-btn').forEach(b => {
+    b.classList.toggle('active', b.dataset.panel === name);
   });
+  // 切换 panel
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'history') loadHistory(1);
-  if (name === 'apps' || name === 'app-dubbing') refreshDubVoiceList();
+}
+
+// 兼容旧调用（应用市集内部跳转用）
+function switchTab(name) {
+  if (name === 'apps' || name.startsWith('app-')) {
+    document.getElementById('nav-apps').classList.add('active');
+    document.getElementById('nav-tools').classList.remove('active');
+    document.getElementById('nav-sub-tools').style.display = 'none';
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.getElementById('panel-' + name).classList.add('active');
+    if (name === 'apps' || name === 'app-dubbing') refreshDubVoiceList();
+  } else {
+    switchSection('tools');
+    switchPanel(name);
+  }
 }
 
 // ===== 复刻音色 localStorage =====
@@ -1595,6 +1639,8 @@ function dubReset() {
 }
 
 init();
+// 默认展示应用市集
+switchSection('apps');
 </script>
 </body>
 </html>
