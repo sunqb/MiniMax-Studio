@@ -141,6 +141,7 @@
     <button class="tab active" onclick="switchTab('text')">📝 文本生成</button>
     <button class="tab" onclick="switchTab('tts')">🎙️ 语音合成</button>
     <button class="tab" onclick="switchTab('music')">🎵 音乐生成</button>
+    <button class="tab" onclick="switchTab('image')">🖼️ 图像生成</button>
     <button class="tab" onclick="switchTab('clone')">🔊 声音复刻</button>
     <button class="tab" onclick="switchTab('history')">📋 历史记录</button>
     <span style="color:var(--border);padding:0 2px;align-self:center;font-size:1.2rem">|</span>
@@ -348,6 +349,90 @@
     </div>
   </div>
 
+  <!-- ===== 图像生成 ===== -->
+  <div id="panel-image" class="panel">
+    <div class="card">
+      <div class="card-title">图像生成</div>
+
+      <!-- 模式切换 -->
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button id="img-mode-t2i" class="btn btn-secondary" onclick="setImageMode('t2i')" style="flex:1;background:var(--accent);color:#fff">文生图</button>
+        <button id="img-mode-i2i" class="btn btn-secondary" onclick="setImageMode('i2i')" style="flex:1">图生图</button>
+      </div>
+
+      <!-- 提示词 -->
+      <label>提示词</label>
+      <textarea id="img-prompt" placeholder="例：A serene mountain lake at sunset, ultra-detailed, photorealistic" rows="3"></textarea>
+
+      <!-- 图生图参考图（I2I 模式显示） -->
+      <div id="img-ref-section" style="display:none;margin-top:10px">
+        <label>参考图（人物主体）</label>
+        <div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">
+          <button class="btn btn-secondary" id="img-ref-tab-url" onclick="setRefMode('url')" style="font-size:0.8rem;padding:4px 10px;background:var(--accent);color:#fff">URL</button>
+          <button class="btn btn-secondary" id="img-ref-tab-file" onclick="setRefMode('file')" style="font-size:0.8rem;padding:4px 10px">上传文件</button>
+        </div>
+        <div id="img-ref-url-row">
+          <input type="text" id="img-ref-url" placeholder="https://...（公开可访问的图片 URL）">
+        </div>
+        <div id="img-ref-file-row" style="display:none">
+          <input type="file" id="img-ref-file" accept="image/*" style="padding:6px 0">
+          <div id="img-ref-preview" style="margin-top:6px;display:none">
+            <img id="img-ref-preview-img" style="max-height:120px;border-radius:8px;border:1px solid var(--border)">
+          </div>
+        </div>
+      </div>
+
+      <!-- 参数行 -->
+      <div class="row" style="margin-top:14px">
+        <div>
+          <label>模型</label>
+          <select id="img-model">
+            <option value="image-01">image-01</option>
+            <option value="image-01-live">image-01-live（动漫风格）</option>
+          </select>
+        </div>
+        <div>
+          <label>宽高比</label>
+          <select id="img-ratio">
+            <option value="1:1">1:1 (1024×1024)</option>
+            <option value="16:9">16:9 (1280×720)</option>
+            <option value="4:3">4:3 (1152×864)</option>
+            <option value="3:2">3:2 (1248×832)</option>
+            <option value="2:3">2:3 (832×1248)</option>
+            <option value="3:4">3:4 (864×1152)</option>
+            <option value="9:16">9:16 (720×1280)</option>
+            <option value="21:9">21:9（仅 image-01）</option>
+          </select>
+        </div>
+        <div>
+          <label>生成数量</label>
+          <select id="img-n">
+            <option value="1">1 张</option>
+            <option value="2">2 张</option>
+            <option value="3">3 张</option>
+            <option value="4">4 张</option>
+          </select>
+        </div>
+        <div style="display:flex;align-items:flex-end;padding-bottom:4px">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0">
+            <input type="checkbox" id="img-optimizer" style="width:auto;padding:0">
+            Prompt 优化
+          </label>
+        </div>
+      </div>
+
+      <div class="action-row">
+        <button class="btn" id="img-gen-btn" onclick="generateImage()">生成图像</button>
+      </div>
+      <div id="img-status" style="font-size:0.85rem;color:var(--text2);margin-top:8px;display:none"></div>
+    </div>
+
+    <!-- 结果区 -->
+    <div id="img-result" style="display:none">
+      <div id="img-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:16px"></div>
+    </div>
+  </div>
+
   <!-- ===== 文件管理 ===== -->
   <div id="panel-files" class="panel">
     <div class="card">
@@ -421,7 +506,7 @@ function fetchT(url, options = {}, ms = 120000) {
 // 切换 Tab
 function switchTab(name) {
   document.querySelectorAll('.tab').forEach((t, i) => {
-    const names = ['text','tts','music','clone','history','files'];
+    const names = ['text','tts','music','image','clone','history','files'];
     t.classList.toggle('active', names[i] === name);
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -618,6 +703,165 @@ async function generateLyrics() {
   }
 }
 
+// ===== 图像生成 =====
+let _imageHistID = '';
+let _imageMode = 't2i';   // 't2i' | 'i2i'
+let _imageRefMode = 'url'; // 'url' | 'file'
+let _imageRefB64 = '';     // 文件上传时的 base64 data URL
+
+function setImageMode(mode) {
+  _imageMode = mode;
+  document.getElementById('img-mode-t2i').style.cssText = mode === 't2i'
+    ? 'flex:1;background:var(--accent);color:#fff' : 'flex:1';
+  document.getElementById('img-mode-i2i').style.cssText = mode === 'i2i'
+    ? 'flex:1;background:var(--accent);color:#fff' : 'flex:1';
+  document.getElementById('img-ref-section').style.display = mode === 'i2i' ? '' : 'none';
+}
+
+function setRefMode(mode) {
+  _imageRefMode = mode;
+  document.getElementById('img-ref-tab-url').style.cssText = mode === 'url'
+    ? 'font-size:0.8rem;padding:4px 10px;background:var(--accent);color:#fff' : 'font-size:0.8rem;padding:4px 10px';
+  document.getElementById('img-ref-tab-file').style.cssText = mode === 'file'
+    ? 'font-size:0.8rem;padding:4px 10px;background:var(--accent);color:#fff' : 'font-size:0.8rem;padding:4px 10px';
+  document.getElementById('img-ref-url-row').style.display = mode === 'url' ? '' : 'none';
+  document.getElementById('img-ref-file-row').style.display = mode === 'file' ? '' : 'none';
+}
+
+// 文件选择后预览并转为 base64 data URL
+document.addEventListener('DOMContentLoaded', () => {
+  const fileInput = document.getElementById('img-ref-file');
+  if (fileInput) {
+    fileInput.addEventListener('change', () => {
+      const file = fileInput.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = e => {
+        _imageRefB64 = e.target.result; // data:image/jpeg;base64,...
+        const preview = document.getElementById('img-ref-preview');
+        const img = document.getElementById('img-ref-preview-img');
+        img.src = _imageRefB64;
+        preview.style.display = '';
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+});
+
+async function generateImage() {
+  const prompt = document.getElementById('img-prompt').value.trim();
+  if (!prompt) { alert('请输入提示词'); return; }
+
+  let subjectRefImage = '';
+  if (_imageMode === 'i2i') {
+    if (_imageRefMode === 'url') {
+      subjectRefImage = document.getElementById('img-ref-url').value.trim();
+    } else {
+      subjectRefImage = _imageRefB64;
+    }
+    if (!subjectRefImage) { alert('图生图模式下请提供参考图'); return; }
+  }
+
+  setLoading('img-gen-btn', true);
+  const statusEl = document.getElementById('img-status');
+  statusEl.textContent = '生成中，请稍候...';
+  statusEl.style.display = '';
+  statusEl.style.color = 'var(--text2)';
+  document.getElementById('img-result').style.display = 'none';
+
+  try {
+    const resp = await fetchT(API + '/api/image/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: document.getElementById('img-model').value,
+        prompt,
+        aspect_ratio: document.getElementById('img-ratio').value,
+        n: parseInt(document.getElementById('img-n').value),
+        prompt_optimizer: document.getElementById('img-optimizer').checked,
+        subject_ref_image: subjectRefImage,
+      })
+    }, 120000);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+
+    _imageHistID = data.history_id || '';
+    renderImageGrid(data.image_urls, data.count);
+    statusEl.textContent = `✅ 生成完成，共 ${data.count} 张（图片 URL 有效期 24 小时，建议上传 R2 永久保存）`;
+    statusEl.style.color = 'var(--text2)';
+  } catch(e) {
+    statusEl.textContent = `❌ 生成失败：${e.message}`;
+    statusEl.style.color = 'var(--error)';
+  } finally {
+    setLoading('img-gen-btn', false);
+  }
+}
+
+function renderImageGrid(urls, count) {
+  const grid = document.getElementById('img-grid');
+  grid.innerHTML = '';
+  (urls || []).forEach((url, i) => {
+    const item = document.createElement('div');
+    item.style.cssText = 'display:flex;flex-direction:column;gap:8px';
+    item.innerHTML = `
+      <img src="${escHtml(url)}" alt="生成图片 ${i+1}"
+        style="width:100%;border-radius:8px;border:1px solid var(--border);cursor:pointer"
+        onclick="window.open('${escHtml(url)}','_blank')"
+        title="点击在新标签页查看大图">
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-secondary" style="flex:1;font-size:0.8rem;padding:5px"
+          onclick="downloadImageProxy('${escHtml(url)}',${i})">⬇ 下载</button>
+        <button class="btn btn-secondary" style="flex:1;font-size:0.8rem;padding:5px"
+          id="img-r2-btn-${i}" onclick="saveImageToR2('${escHtml(url)}',${i})">☁ R2</button>
+      </div>`;
+    grid.appendChild(item);
+  });
+  document.getElementById('img-result').style.display = '';
+}
+
+async function downloadImageProxy(url, idx) {
+  try {
+    const resp = await fetch(API + '/api/image/proxy?url=' + encodeURIComponent(url));
+    if (!resp.ok) throw new Error('下载失败');
+    const blob = await resp.blob();
+    const ext = blob.type.includes('png') ? 'png' : blob.type.includes('webp') ? 'webp' : 'jpg';
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `image-${idx + 1}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  } catch(e) {
+    alert('下载失败：' + e.message);
+  }
+}
+
+async function saveImageToR2(url, idx) {
+  const btn = document.getElementById(`img-r2-btn-${idx}`);
+  if (!btn) return;
+  btn._orig2 = btn.innerHTML;
+  btn.innerHTML = '<span class="spinner"></span>';
+  btn.disabled = true;
+  try {
+    const resp = await fetchT(API + '/api/image/save-r2', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, history_id: idx === 0 ? _imageHistID : '' })
+    }, 30000);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    btn.innerHTML = '✅ 已保存';
+    btn.title = data.public_url || '';
+    if (data.public_url) {
+      btn.onclick = () => window.open(data.public_url, '_blank');
+    }
+  } catch(e) {
+    btn.innerHTML = '❌ 失败';
+    btn.title = e.message;
+    setTimeout(() => { btn.innerHTML = btn._orig2; btn.disabled = false; btn.onclick = () => saveImageToR2(url, idx); }, 2000);
+    return;
+  }
+}
+
 // ===== 上传到 R2 =====
 async function uploadText() {
   if (!window._textContent) return;
@@ -776,7 +1020,7 @@ async function deleteFile(fileID, purpose, btn) {
 }
 
 // ===== 历史记录 =====
-const HIST_TYPE_LABEL = { music:'🎵 音乐', tts:'🎙️ 语音', text:'📝 文本', clone:'🔊 声音复刻' };
+const HIST_TYPE_LABEL = { music:'🎵 音乐', tts:'🎙️ 语音', text:'📝 文本', clone:'🔊 声音复刻', image:'🖼️ 图像' };
 let histPage = 1;
 
 async function loadHistory(page) {
@@ -943,15 +1187,26 @@ function showHistDetail(r) {
     }
   }
 
-  // 音频
+  // 音频 / 图像（audio_url 字段复用于图像 R2 URL）
   if (r.audio_url) {
-    html += `<div class="detail-section">
-      <div class="detail-label">音频文件（R2）</div>
-      <div style="margin-bottom:8px">
-        <a href="${escHtml(r.audio_url)}" target="_blank" style="color:var(--accent);font-size:0.85rem;word-break:break-all">${escHtml(r.audio_url)}</a>
-      </div>
-      <audio controls style="width:100%;border-radius:6px"><source src="${escHtml(r.audio_url)}"></audio>
-    </div>`;
+    const isImage = r.type === 'image';
+    if (isImage) {
+      html += `<div class="detail-section">
+        <div class="detail-label">图像文件（R2）</div>
+        <div style="margin-bottom:8px">
+          <a href="${escHtml(r.audio_url)}" target="_blank" style="color:var(--accent);font-size:0.85rem;word-break:break-all">${escHtml(r.audio_url)}</a>
+        </div>
+        <img src="${escHtml(r.audio_url)}" style="max-width:100%;border-radius:8px;border:1px solid var(--border)">
+      </div>`;
+    } else {
+      html += `<div class="detail-section">
+        <div class="detail-label">音频文件（R2）</div>
+        <div style="margin-bottom:8px">
+          <a href="${escHtml(r.audio_url)}" target="_blank" style="color:var(--accent);font-size:0.85rem;word-break:break-all">${escHtml(r.audio_url)}</a>
+        </div>
+        <audio controls style="width:100%;border-radius:6px"><source src="${escHtml(r.audio_url)}"></audio>
+      </div>`;
+    }
   }
 
   document.getElementById('hist-modal-title').textContent = typeLabel + ' · ' + r.title.slice(0, 30);

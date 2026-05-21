@@ -36,6 +36,11 @@ func (h *Handler) Register(r *gin.Engine) {
 		api.GET("/music/models", h.MusicModels)
 		api.POST("/lyrics/generate", h.LyricsGenerate)
 
+		// 图像生成
+		api.POST("/image/generate", h.ImageGenerate)
+		api.POST("/image/save-r2", h.ImageSaveR2)
+		api.GET("/image/proxy", h.ImageProxy)
+
 		// 声音复刻
 		api.POST("/voice/clone", h.VoiceClone)
 

@@ -127,6 +127,14 @@ func contentTypeFor(ext string) string {
 		return "text/plain; charset=utf-8"
 	case "json":
 		return "application/json"
+	case "jpg", "jpeg":
+		return "image/jpeg"
+	case "png":
+		return "image/png"
+	case "webp":
+		return "image/webp"
+	case "gif":
+		return "image/gif"
 	default:
 		return "application/octet-stream"
 	}
