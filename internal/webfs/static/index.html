@@ -1291,7 +1291,7 @@ async function loadHistory(page) {
   document.getElementById('hist-pagination').innerHTML = '';
 
   try {
-    const qs = new URLSearchParams({ page: histPage, size: 20, source: 'atomic' });
+    const qs = new URLSearchParams({ page: histPage, size: 20 });
     if (type) qs.set('type', type);
     const resp = await fetchT(API + '/api/history?' + qs, {}, 10000);
     const data = await resp.json();
@@ -1314,13 +1314,14 @@ async function loadHistory(page) {
       const r2Tag = r.audio_url
         ? `<a href="${r.audio_url}" target="_blank" style="font-size:0.75rem;color:var(--success);text-decoration:none;white-space:nowrap" title="${r.audio_url}">☁️ R2</a>`
         : '';
-      const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!=='').map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
+      const appBadge = r.app_source ? `<span style="font-size:0.72rem;background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px;margin-right:4px">📦 ${escHtml(r.app_source)}</span>` : '';
+      const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!==''&&v!==0&&v!==false).map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
       const recJson = encodeURIComponent(JSON.stringify(r));
       return `<tr id="hist-row-${r.id}" style="border-bottom:1px solid var(--border)">
         <td style="padding:10px 8px;font-size:0.82rem;color:var(--text2)">${date}</td>
         <td style="padding:10px 8px"><span class="badge badge-info">${HIST_TYPE_LABEL[r.type]||r.type}</span></td>
         <td style="padding:10px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title}">${r.title}</td>
-        <td style="padding:10px 8px;font-size:0.78rem;color:var(--text2);max-width:180px;overflow:hidden">${paramsStr}</td>
+        <td style="padding:10px 8px;font-size:0.78rem;color:var(--text2);max-width:180px;overflow:hidden">${appBadge}${paramsStr}</td>
         <td style="padding:10px 8px;color:var(--text2);font-size:0.82rem">${size}</td>
         <td style="padding:10px 8px;white-space:nowrap">
           <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="showHistDetail(JSON.parse(decodeURIComponent('${recJson}')))">🔍 详情</button>
