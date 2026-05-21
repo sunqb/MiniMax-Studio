@@ -1,0 +1,116 @@
+package minimax
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"mime/multipart"
+	"net/http"
+	"time"
+)
+
+type Client struct {
+	apiKey  string
+	baseURL string
+	http    *http.Client
+}
+
+func NewClient(apiKey, baseURL string) *Client {
+	return &Client{
+		apiKey:  apiKey,
+		baseURL: baseURL,
+		http: &http.Client{
+			Timeout: 120 * time.Second,
+			Transport: &http.Transport{
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
+			},
+		},
+	}
+}
+
+// post 发起 API 请求，query 为可选的 URL 查询参数（如 "GroupId=xxx"）
+func (c *Client) post(ctx context.Context, path, query string, body any) ([]byte, error) {
+	u := c.baseURL + path
+	if query != "" {
+		u += "?" + query
+	}
+
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(data))
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
+}
+
+// postMultipart 发起 multipart/form-data 请求
+func (c *Client) postMultipart(ctx context.Context, path string, fields map[string]string, fileField, filename string, fileData []byte) ([]byte, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+
+	for k, v := range fields {
+		if err := w.WriteField(k, v); err != nil {
+			return nil, fmt.Errorf("write field %s: %w", k, err)
+		}
+	}
+
+	part, err := w.CreateFormFile(fileField, filename)
+	if err != nil {
+		return nil, fmt.Errorf("create form file: %w", err)
+	}
+	if _, err := part.Write(fileData); err != nil {
+		return nil, fmt.Errorf("write file data: %w", err)
+	}
+	w.Close()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+path, &buf)
+	if err != nil {
+		return nil, fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	req.Header.Set("Content-Type", w.FormDataContentType())
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
+}
+

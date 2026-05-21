@@ -1,0 +1,17 @@
+# 环境变量（含密钥，不提交）
+.env
+
+# 数据目录（SQLite 数据库、运行时数据）
+data/
+
+# 编译产物
+minimax-studio
+*.exe
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp
