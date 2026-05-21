@@ -703,19 +703,22 @@ function switchTab(name) {
   }
 }
 
-// ===== 复刻音色 localStorage =====
-const CLONED_VOICES_KEY = 'minimax_cloned_voices';
-function getClonedVoices() { return JSON.parse(localStorage.getItem(CLONED_VOICES_KEY) || '[]'); }
-function saveClonedVoice(voiceId) {
-  const list = getClonedVoices();
-  if (!list.includes(voiceId)) { list.push(voiceId); localStorage.setItem(CLONED_VOICES_KEY, JSON.stringify(list)); }
+// ===== 复刻音色（从历史记录 API 获取）=====
+async function fetchClonedVoices() {
+  try {
+    const resp = await fetchT(API + '/api/voice/cloned', {}, 8000);
+    const data = await resp.json();
+    return data.voices || [];
+  } catch(e) {
+    console.warn('fetchClonedVoices failed:', e);
+    return [];
+  }
 }
-function refreshTTSClonedVoices() {
+async function refreshTTSClonedVoices() {
   const sel = document.getElementById('tts-voice');
-  // 删除旧的复刻 optgroup
   const old = sel.querySelector('optgroup[data-cloned]');
   if (old) sel.removeChild(old);
-  const list = getClonedVoices();
+  const list = await fetchClonedVoices();
   if (list.length === 0) return;
   const grp = document.createElement('optgroup');
   grp.label = '🔊 我的复刻音色';
@@ -727,12 +730,13 @@ function refreshTTSClonedVoices() {
   });
   sel.insertBefore(grp, sel.firstChild);
 }
-function refreshDubVoiceList() {
+async function refreshDubVoiceList() {
   const sel = document.getElementById('dub-saved-voice');
+  sel.innerHTML = '<option value="">加载中...</option>';
+  const list = await fetchClonedVoices();
   sel.innerHTML = '';
-  const list = getClonedVoices();
   if (list.length === 0) {
-    sel.innerHTML = '<option value="">— 请先在「声音复刻」页复刻音色 —</option>';
+    sel.innerHTML = '<option value="">— 请先在「原子功能 · 复刻」页复刻音色 —</option>';
     return;
   }
   list.forEach(id => {
@@ -1158,8 +1162,7 @@ async function cloneVoice() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || resp.statusText);
 
-    // 保存到 localStorage，打通 TTS 和应用市集
-    saveClonedVoice(data.voice_id);
+    // 刷新 TTS 音色列表（从历史记录 API 读取）
     refreshTTSClonedVoices();
 
     document.getElementById('clone-result').style.display = 'block';
@@ -1290,13 +1293,15 @@ async function loadHistory(page) {
       const r2Tag = r.audio_url
         ? `<a href="${r.audio_url}" target="_blank" style="font-size:0.75rem;color:var(--success);text-decoration:none;white-space:nowrap" title="${r.audio_url}">☁️ R2</a>`
         : '';
-      const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!=='').map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
+      const appSource = r.params?.app_source;
+      const appSourceTag = appSource ? `<span style="font-size:0.72rem;background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px;margin-right:4px">📦 ${escHtml(appSource)}</span>` : '';
+      const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!==''&&k!=='app_source').map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
       const recJson = encodeURIComponent(JSON.stringify(r));
       return `<tr id="hist-row-${r.id}" style="border-bottom:1px solid var(--border)">
         <td style="padding:10px 8px;font-size:0.82rem;color:var(--text2)">${date}</td>
         <td style="padding:10px 8px"><span class="badge badge-info">${HIST_TYPE_LABEL[r.type]||r.type}</span></td>
         <td style="padding:10px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title}">${r.title}</td>
-        <td style="padding:10px 8px;font-size:0.78rem;color:var(--text2);max-width:180px;overflow:hidden">${paramsStr}</td>
+        <td style="padding:10px 8px;font-size:0.78rem;color:var(--text2);max-width:180px;overflow:hidden">${appSourceTag}${paramsStr}</td>
         <td style="padding:10px 8px;color:var(--text2);font-size:0.82rem">${size}</td>
         <td style="padding:10px 8px;white-space:nowrap">
           <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="showHistDetail(JSON.parse(decodeURIComponent('${recJson}')))">🔍 详情</button>
@@ -1603,6 +1608,7 @@ async function dubGenerate() {
         vol: parseFloat(document.getElementById('dub-vol').value),
         pitch: 0,
         format: 'mp3',
+        app_source: '音色复刻配音',
       })
     }, 60000);
     const data = await resp.json();

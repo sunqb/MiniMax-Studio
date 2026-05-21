@@ -86,3 +86,30 @@ func (h *Handler) VoiceClone(c *gin.Context) {
 		HistoryID: histID,
 	})
 }
+
+// ClonedVoiceList 从历史记录中提取所有已复刻的音色 ID（去重，按时间倒序）
+func (h *Handler) ClonedVoiceList(c *gin.Context) {
+	if h.hist == nil {
+		c.JSON(http.StatusOK, gin.H{"voices": []string{}})
+		return
+	}
+	// 取最近 100 条 clone 记录足够覆盖所有音色
+	records, _, err := h.hist.List(c.Request.Context(), history.ListParams{
+		Type: "clone",
+		Page: 1,
+		Size: 100,
+	})
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	seen := map[string]bool{}
+	voices := []string{}
+	for _, r := range records {
+		if id, ok := r.Params["voice_id"].(string); ok && id != "" && !seen[id] {
+			seen[id] = true
+			voices = append(voices, id)
+		}
+	}
+	c.JSON(http.StatusOK, gin.H{"voices": voices})
+}

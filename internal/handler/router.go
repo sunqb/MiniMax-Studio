@@ -43,6 +43,7 @@ func (h *Handler) Register(r *gin.Engine) {
 
 		// 声音复刻
 		api.POST("/voice/clone", h.VoiceClone)
+		api.GET("/voice/cloned", h.ClonedVoiceList)
 
 		// MiniMax 文件管理
 		api.GET("/files", h.FilesList)

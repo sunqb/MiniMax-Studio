@@ -13,13 +13,14 @@ import (
 )
 
 type TTSSynthesizeRequest struct {
-	Text    string  `json:"text" binding:"required"`
-	VoiceID string  `json:"voice_id"`
-	Speed   float64 `json:"speed"`
-	Vol     float64 `json:"vol"`
-	Pitch   int     `json:"pitch"`
-	Format  string  `json:"format"`
-	Model   string  `json:"model"`
+	Text      string  `json:"text" binding:"required"`
+	VoiceID   string  `json:"voice_id"`
+	Speed     float64 `json:"speed"`
+	Vol       float64 `json:"vol"`
+	Pitch     int     `json:"pitch"`
+	Format    string  `json:"format"`
+	Model     string  `json:"model"`
+	AppSource string  `json:"app_source"` // 来源应用，如 "音色复刻配音"
 }
 
 type TTSSynthesizeResponse struct {
@@ -62,12 +63,13 @@ func (h *Handler) TTSSynthesize(c *gin.Context) {
 		Type:  "tts",
 		Title: history.Truncate(req.Text, 60),
 		Params: map[string]any{
-			"model":    req.Model,
-			"voice_id": req.VoiceID,
-			"speed":    req.Speed,
-			"vol":      req.Vol,
-			"pitch":    req.Pitch,
-			"format":   req.Format,
+			"model":      req.Model,
+			"voice_id":   req.VoiceID,
+			"speed":      req.Speed,
+			"vol":        req.Vol,
+			"pitch":      req.Pitch,
+			"format":     req.Format,
+			"app_source": req.AppSource,
 		},
 		Size: int64(len(audioData)),
 	}
