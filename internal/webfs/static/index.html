@@ -1054,7 +1054,7 @@ async function loadHistory(page) {
           : `<button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="playHistAudio('${r.id}','${encodeURIComponent(r.audio_url)}')">▶ 播放</button>`
         : '';
       const r2Tag = r.audio_url
-        ? `<a href="${r.audio_url}" target="_blank" style="font-size:0.75rem;color:var(--success);text-decoration:none;white-space:nowrap" title="${r.audio_url}">${r.type === 'image' ? '🖼️' : '☁️'} R2</a>`
+        ? `<a href="${r.audio_url}" target="_blank" style="font-size:0.75rem;color:var(--success);text-decoration:none;white-space:nowrap" title="${r.audio_url}">☁️ R2</a>`
         : '';
       const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!=='').map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
       const recJson = encodeURIComponent(JSON.stringify(r));
