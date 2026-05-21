@@ -1616,6 +1616,7 @@ async function dubGenerate() {
       `<span style="color:var(--success)">✅ 配音完成，音色：${dubVoiceID}，大小：${(data.size/1024).toFixed(1)} KB</span>`;
     document.getElementById('dub-result-wrap').style.display = '';
     document.getElementById('dub-upload-btn').style.display = '';
+    document.getElementById('dub-step3').scrollIntoView({ behavior: 'smooth', block: 'start' });
   } catch(e) {
     document.getElementById('dub-result-status').innerHTML = `<span style="color:var(--error)">❌ 合成失败：${e.message}</span>`;
   } finally {
