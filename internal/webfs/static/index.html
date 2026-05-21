@@ -97,6 +97,19 @@
 
   @media (max-width: 600px) { .row, .row3 { grid-template-columns: 1fr; } }
 
+  /* 应用市集 */
+  .app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; }
+  .app-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px 20px; cursor: pointer; transition: border-color 0.2s, transform 0.15s; text-align: center; }
+  .app-card:hover { border-color: var(--accent); transform: translateY(-3px); }
+  .app-card-icon { font-size: 2.4rem; margin-bottom: 12px; }
+  .app-card-title { font-size: 1rem; font-weight: 600; margin-bottom: 8px; }
+  .app-card-desc { font-size: 0.82rem; color: var(--text2); line-height: 1.6; }
+  .app-back { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; color: var(--text2); cursor: pointer; margin-bottom: 16px; }
+  .app-back:hover { color: var(--text); }
+  .step-bar { display: flex; gap: 0; margin-bottom: 20px; }
+  .step-item { flex: 1; text-align: center; padding: 10px 4px; font-size: 0.82rem; color: var(--text2); border-bottom: 2px solid var(--border); }
+  .step-item.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
   /* 详情模态框 */
   .modal-overlay {
     display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7);
@@ -134,7 +147,7 @@
 <div class="app">
   <header>
     <h1>⚡ MiniMax Studio</h1>
-    <span>文本生成 · 语音合成 · 音乐生成 · 声音复刻 · 历史记录</span>
+    <span>文本生成 · 语音合成 · 音乐生成 · 图像生成 · 声音复刻 · 应用市集</span>
   </header>
 
   <div class="tabs">
@@ -143,6 +156,7 @@
     <button class="tab" onclick="switchTab('music')">🎵 音乐生成</button>
     <button class="tab" onclick="switchTab('image')">🖼️ 图像生成</button>
     <button class="tab" onclick="switchTab('clone')">🔊 声音复刻</button>
+    <button class="tab" onclick="switchTab('apps')">🚀 应用</button>
     <button class="tab" onclick="switchTab('history')">📋 历史记录</button>
     <span style="color:var(--border);padding:0 2px;align-self:center;font-size:1.2rem">|</span>
     <button class="tab" onclick="switchTab('files')" style="flex:none;font-size:0.82rem;color:var(--text2)" title="MiniMax 平台文件管理">📁 文件管理</button>
@@ -455,6 +469,132 @@
     </div>
   </div>
 
+  <!-- ===== 应用市集 ===== -->
+  <div id="panel-apps" class="panel">
+    <div class="card">
+      <div class="card-title">应用市集</div>
+      <div style="font-size:0.85rem;color:var(--text2);margin-bottom:20px">将多个 AI 能力组合成开箱即用的创作工作流</div>
+      <div class="app-grid">
+        <div class="app-card" onclick="switchTab('app-dubbing')">
+          <div class="app-card-icon">🎙️</div>
+          <div class="app-card-title">音色复刻配音</div>
+          <div class="app-card-desc">上传参考音频复刻专属音色，然后输入文字一键生成配音。克隆 + 合成全程自动完成。</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 应用：音色复刻配音 ===== -->
+  <div id="panel-app-dubbing" class="panel">
+    <div class="app-back" onclick="switchTab('apps')">← 返回应用市集</div>
+
+    <!-- 步骤条 -->
+    <div class="step-bar">
+      <div class="step-item active" id="dub-step1-label">① 选择音色</div>
+      <div class="step-item" id="dub-step2-label">② 输入文本</div>
+      <div class="step-item" id="dub-step3-label">③ 生成配音</div>
+    </div>
+
+    <!-- 步骤1：选择音色 -->
+    <div id="dub-step1" class="card">
+      <div class="card-title">选择配音音色</div>
+
+      <div style="display:flex;gap:8px;margin-bottom:16px">
+        <button id="dub-voice-tab-saved" class="btn btn-secondary" onclick="setDubVoiceMode('saved')"
+          style="flex:1;background:var(--accent);color:#fff">使用已复刻音色</button>
+        <button id="dub-voice-tab-new" class="btn btn-secondary" onclick="setDubVoiceMode('new')"
+          style="flex:1">上传新音频复刻</button>
+      </div>
+
+      <!-- 已有音色 -->
+      <div id="dub-saved-section">
+        <label>已复刻的音色</label>
+        <select id="dub-saved-voice">
+          <option value="">— 请先在「声音复刻」页复刻音色 —</option>
+        </select>
+        <div style="font-size:0.8rem;color:var(--text2);margin-top:6px">
+          音色在「🔊 声音复刻」页面成功复刻后会自动出现在此列表。
+        </div>
+      </div>
+
+      <!-- 新建音色 -->
+      <div id="dub-new-section" style="display:none">
+        <label>上传参考音频 <span style="color:var(--text2);font-size:0.8rem">（mp3 / wav / m4a，10秒–5分钟，≤20MB）</span></label>
+        <input type="file" id="dub-file" accept=".mp3,.wav,.m4a" style="padding:8px">
+        <label>音色 ID <span style="color:var(--text2);font-size:0.8rem">（英文字母开头，8–256 字符）</span></label>
+        <input type="text" id="dub-voice-id" placeholder="DubbingVoice001" maxlength="256">
+        <div style="display:flex;flex-wrap:wrap;gap:12px 24px;margin-top:12px">
+          <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">
+            <input type="checkbox" id="dub-noise" checked style="width:auto;padding:0"> 降噪处理
+          </label>
+          <label style="margin:0;display:flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap">
+            <input type="checkbox" id="dub-volume" checked style="width:auto;padding:0"> 音量归一化
+          </label>
+        </div>
+      </div>
+
+      <div class="action-row" style="margin-top:16px">
+        <button class="btn btn-primary" id="dub-step1-btn" onclick="dubStep1Next()">下一步 →</button>
+      </div>
+      <div id="dub-step1-status" style="margin-top:10px"></div>
+    </div>
+
+    <!-- 步骤2：输入文本 -->
+    <div id="dub-step2" class="card" style="display:none">
+      <div class="card-title">输入配音文本</div>
+      <div id="dub-voice-badge" style="display:inline-block;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:4px 12px;font-size:0.82rem;color:var(--accent2);margin-bottom:14px"></div>
+      <label>配音文本 <span style="color:var(--error)">*</span></label>
+      <textarea id="dub-text" placeholder="输入要配音的文字内容..." rows="5"></textarea>
+      <div class="row" style="margin-top:12px">
+        <div>
+          <label>模型</label>
+          <select id="dub-model">
+            <option value="speech-2.8-hd">speech-2.8-hd（HD）</option>
+            <option value="speech-2.8-turbo">speech-2.8-turbo（快速）</option>
+            <option value="speech-02-hd">speech-02-hd</option>
+          </select>
+        </div>
+        <div>
+          <label>语速 Speed</label>
+          <div class="range-row">
+            <input type="range" id="dub-speed" min="0.5" max="2.0" step="0.1" value="1.0"
+              oninput="document.getElementById('dub-speed-val').textContent=parseFloat(this.value).toFixed(1)">
+            <span class="range-val" id="dub-speed-val">1.0</span>
+          </div>
+        </div>
+        <div>
+          <label>音量 Vol</label>
+          <div class="range-row">
+            <input type="range" id="dub-vol" min="0.1" max="2.0" step="0.1" value="1.0"
+              oninput="document.getElementById('dub-vol-val').textContent=parseFloat(this.value).toFixed(1)">
+            <span class="range-val" id="dub-vol-val">1.0</span>
+          </div>
+        </div>
+      </div>
+      <div class="action-row" style="margin-top:16px;gap:10px">
+        <button class="btn btn-secondary" onclick="dubGoBack()">← 返回</button>
+        <button class="btn btn-primary" id="dub-step2-btn" onclick="dubGenerate()">🎙️ 开始配音</button>
+      </div>
+    </div>
+
+    <!-- 步骤3：结果 -->
+    <div id="dub-step3" class="card" style="display:none">
+      <div class="card-title">配音结果</div>
+      <div id="dub-result-status"></div>
+      <div id="dub-result-wrap" style="display:none;margin-top:14px">
+        <div class="audio-player">
+          <audio id="dub-audio" controls style="width:100%"></audio>
+        </div>
+        <div class="action-row" style="margin-top:12px;gap:8px">
+          <button class="btn btn-secondary" onclick="downloadAudio('dub-audio','dubbing.mp3')">⬇️ 下载</button>
+          <button class="btn btn-success" id="dub-upload-btn" onclick="uploadDubbing()" style="display:none">☁️ 上传到 R2</button>
+          <button class="btn btn-secondary" onclick="dubReset()">🔄 重新配音</button>
+        </div>
+        <div id="dub-upload-result"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== 历史记录 ===== -->
   <div id="panel-history" class="panel">
     <div class="card">
@@ -507,13 +647,55 @@ function fetchT(url, options = {}, ms = 120000) {
 
 // 切换 Tab
 function switchTab(name) {
+  const tabNames = ['text','tts','music','image','clone','apps','history','files'];
+  // app-dubbing 是 apps 的子页，高亮 apps tab
+  const activeTabName = name.startsWith('app-') ? 'apps' : name;
   document.querySelectorAll('.tab').forEach((t, i) => {
-    const names = ['text','tts','music','image','clone','history','files'];
-    t.classList.toggle('active', names[i] === name);
+    t.classList.toggle('active', tabNames[i] === activeTabName);
   });
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.getElementById('panel-' + name).classList.add('active');
   if (name === 'history') loadHistory(1);
+  if (name === 'apps' || name === 'app-dubbing') refreshDubVoiceList();
+}
+
+// ===== 复刻音色 localStorage =====
+const CLONED_VOICES_KEY = 'minimax_cloned_voices';
+function getClonedVoices() { return JSON.parse(localStorage.getItem(CLONED_VOICES_KEY) || '[]'); }
+function saveClonedVoice(voiceId) {
+  const list = getClonedVoices();
+  if (!list.includes(voiceId)) { list.push(voiceId); localStorage.setItem(CLONED_VOICES_KEY, JSON.stringify(list)); }
+}
+function refreshTTSClonedVoices() {
+  const sel = document.getElementById('tts-voice');
+  // 删除旧的复刻 optgroup
+  const old = sel.querySelector('optgroup[data-cloned]');
+  if (old) sel.removeChild(old);
+  const list = getClonedVoices();
+  if (list.length === 0) return;
+  const grp = document.createElement('optgroup');
+  grp.label = '🔊 我的复刻音色';
+  grp.dataset.cloned = '1';
+  list.forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id; opt.textContent = id;
+    grp.appendChild(opt);
+  });
+  sel.insertBefore(grp, sel.firstChild);
+}
+function refreshDubVoiceList() {
+  const sel = document.getElementById('dub-saved-voice');
+  sel.innerHTML = '';
+  const list = getClonedVoices();
+  if (list.length === 0) {
+    sel.innerHTML = '<option value="">— 请先在「声音复刻」页复刻音色 —</option>';
+    return;
+  }
+  list.forEach(id => {
+    const opt = document.createElement('option');
+    opt.value = id; opt.textContent = id;
+    sel.appendChild(opt);
+  });
 }
 
 // 初始化：加载 TTS 音色列表
@@ -521,11 +703,15 @@ async function init() {
   try {
     const ttsResp = await fetchT(API + '/api/tts/voices', {}, 10000).then(r => r.json());
     const ttsVoice = document.getElementById('tts-voice');
+    const grp = document.createElement('optgroup');
+    grp.label = '预设音色';
     (ttsResp.voices || []).forEach(v => {
       const opt = document.createElement('option');
       opt.value = v.id; opt.textContent = v.name + ' (' + v.id + ')';
-      ttsVoice.appendChild(opt);
+      grp.appendChild(opt);
     });
+    ttsVoice.appendChild(grp);
+    refreshTTSClonedVoices();
   } catch(e) {
     console.warn('init failed:', e);
   }
@@ -928,9 +1114,13 @@ async function cloneVoice() {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || resp.statusText);
 
+    // 保存到 localStorage，打通 TTS 和应用市集
+    saveClonedVoice(data.voice_id);
+    refreshTTSClonedVoices();
+
     document.getElementById('clone-result').style.display = 'block';
     document.getElementById('clone-status').innerHTML =
-      `<div style="color:var(--success)">✅ 复刻成功！音色 ID：<strong>${data.voice_id}</strong>，可直接用于 TTS 语音合成。</div>`;
+      `<div style="color:var(--success)">✅ 复刻成功！音色 ID：<strong>${data.voice_id}</strong>，已自动同步到「语音合成」和「应用市集」。</div>`;
 
     if (data.demo_audio) {
       document.getElementById('clone-demo-wrap').style.display = 'block';
@@ -1268,6 +1458,141 @@ function downloadAudio(audioId, filename) {
 }
 
 document.addEventListener('keydown', e => { if (e.key === 'Escape') closeHistModal(); });
+
+// ===== 应用：音色复刻配音 =====
+let dubVoiceID = ''; // 最终使用的音色 ID
+let dubAudioB64 = null;
+let dubHistID = null;
+
+function setDubVoiceMode(mode) {
+  const isSaved = mode === 'saved';
+  document.getElementById('dub-saved-section').style.display = isSaved ? '' : 'none';
+  document.getElementById('dub-new-section').style.display = isSaved ? 'none' : '';
+  document.getElementById('dub-voice-tab-saved').style.cssText = isSaved
+    ? 'flex:1;background:var(--accent);color:#fff' : 'flex:1';
+  document.getElementById('dub-voice-tab-new').style.cssText = isSaved
+    ? 'flex:1' : 'flex:1;background:var(--accent);color:#fff';
+}
+
+async function dubStep1Next() {
+  const isSaved = document.getElementById('dub-saved-section').style.display !== 'none';
+  const statusEl = document.getElementById('dub-step1-status');
+  statusEl.innerHTML = '';
+
+  if (isSaved) {
+    // 直接使用已有音色
+    const voiceId = document.getElementById('dub-saved-voice').value;
+    if (!voiceId) { statusEl.innerHTML = '<span style="color:var(--error)">请选择音色，或切换到「上传新音频复刻」</span>'; return; }
+    dubVoiceID = voiceId;
+    dubShowStep2();
+  } else {
+    // 先克隆
+    const fileInput = document.getElementById('dub-file');
+    const voiceId = document.getElementById('dub-voice-id').value.trim();
+    if (!fileInput.files[0]) { statusEl.innerHTML = '<span style="color:var(--error)">请选择音频文件</span>'; return; }
+    if (!voiceId) { statusEl.innerHTML = '<span style="color:var(--error)">请输入音色 ID</span>'; return; }
+
+    const btn = document.getElementById('dub-step1-btn');
+    btn._orig = btn.innerHTML; btn.innerHTML = '<span class="spinner"></span> 复刻中...'; btn.disabled = true;
+    statusEl.innerHTML = '<span style="color:var(--text2)">正在复刻音色，请稍候...</span>';
+
+    try {
+      const fd = new FormData();
+      fd.append('file', fileInput.files[0]);
+      fd.append('voice_id', voiceId);
+      fd.append('noise_reduction', document.getElementById('dub-noise').checked ? 'true' : 'false');
+      fd.append('volume_normalization', document.getElementById('dub-volume').checked ? 'true' : 'false');
+
+      const resp = await fetchT(API + '/api/voice/clone', { method: 'POST', body: fd }, 120000);
+      const data = await resp.json();
+      if (!resp.ok) throw new Error(data.error || resp.statusText);
+
+      saveClonedVoice(data.voice_id);
+      refreshTTSClonedVoices();
+      dubVoiceID = data.voice_id;
+      statusEl.innerHTML = `<span style="color:var(--success)">✅ 复刻成功，音色 ID：${data.voice_id}</span>`;
+      dubShowStep2();
+    } catch(e) {
+      statusEl.innerHTML = `<span style="color:var(--error)">复刻失败：${e.message}</span>`;
+    } finally {
+      btn.innerHTML = btn._orig; btn.disabled = false;
+    }
+  }
+}
+
+function dubShowStep2() {
+  document.getElementById('dub-step1').style.display = 'none';
+  document.getElementById('dub-step2').style.display = '';
+  document.getElementById('dub-step1-label').classList.remove('active');
+  document.getElementById('dub-step2-label').classList.add('active');
+  document.getElementById('dub-voice-badge').textContent = '🔊 音色：' + dubVoiceID;
+}
+
+function dubGoBack() {
+  document.getElementById('dub-step2').style.display = 'none';
+  document.getElementById('dub-step1').style.display = '';
+  document.getElementById('dub-step2-label').classList.remove('active');
+  document.getElementById('dub-step1-label').classList.add('active');
+}
+
+async function dubGenerate() {
+  const text = document.getElementById('dub-text').value.trim();
+  if (!text) { alert('请输入配音文本'); return; }
+
+  const btn = document.getElementById('dub-step2-btn');
+  btn._orig = btn.innerHTML; btn.innerHTML = '<span class="spinner"></span> 合成中...'; btn.disabled = true;
+
+  document.getElementById('dub-step3').style.display = '';
+  document.getElementById('dub-step3-label').classList.add('active');
+  document.getElementById('dub-result-status').innerHTML = '<span style="color:var(--text2)">正在合成配音...</span>';
+  document.getElementById('dub-result-wrap').style.display = 'none';
+
+  try {
+    const resp = await fetchT(API + '/api/tts/synthesize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text,
+        voice_id: dubVoiceID,
+        model: document.getElementById('dub-model').value,
+        speed: parseFloat(document.getElementById('dub-speed').value),
+        vol: parseFloat(document.getElementById('dub-vol').value),
+        pitch: 0,
+        format: 'mp3',
+      })
+    }, 60000);
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || resp.statusText);
+
+    dubAudioB64 = data.audio;
+    dubHistID = data.history_id || null;
+    const audioSrc = 'data:audio/mp3;base64,' + data.audio;
+    document.getElementById('dub-audio').src = audioSrc;
+    document.getElementById('dub-result-status').innerHTML =
+      `<span style="color:var(--success)">✅ 配音完成，音色：${dubVoiceID}，大小：${(data.size/1024).toFixed(1)} KB</span>`;
+    document.getElementById('dub-result-wrap').style.display = '';
+    document.getElementById('dub-upload-btn').style.display = '';
+  } catch(e) {
+    document.getElementById('dub-result-status').innerHTML = `<span style="color:var(--error)">❌ 合成失败：${e.message}</span>`;
+  } finally {
+    btn.innerHTML = btn._orig; btn.disabled = false;
+  }
+}
+
+async function uploadDubbing() {
+  if (!dubAudioB64) return;
+  await doUpload('dub-upload-btn', 'tts', 'mp3', dubAudioB64, 'dub-upload-result', dubHistID);
+}
+
+function dubReset() {
+  document.getElementById('dub-step3').style.display = 'none';
+  document.getElementById('dub-step3-label').classList.remove('active');
+  document.getElementById('dub-step2').style.display = '';
+  document.getElementById('dub-step2-label').classList.add('active');
+  dubAudioB64 = null; dubHistID = null;
+  document.getElementById('dub-upload-result').innerHTML = '';
+  document.getElementById('dub-upload-btn').style.display = 'none';
+}
 
 init();
 </script>
