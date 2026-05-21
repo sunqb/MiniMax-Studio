@@ -506,8 +506,11 @@
         <div style="display:flex;gap:8px;align-items:center">
           <select id="app-hist-type" style="width:auto;padding:6px 10px" onchange="loadAppHistory(1)">
             <option value="">全部类型</option>
+            <option value="music">🎵 音乐</option>
             <option value="tts">🎙️ 语音</option>
+            <option value="text">📝 文本</option>
             <option value="clone">🔊 声音复刻</option>
+            <option value="image">🖼️ 图像</option>
           </select>
           <button class="btn btn-secondary" onclick="loadAppHistory(1)" style="padding:6px 14px">🔄 刷新</button>
         </div>
@@ -1397,7 +1400,7 @@ async function loadAppHistory(page) {
         ? `<a href="${r.audio_url}" target="_blank" style="font-size:0.75rem;color:var(--success);text-decoration:none;white-space:nowrap" title="${r.audio_url}">☁️ R2</a>`
         : '';
       const appBadge = r.app_source ? `<span style="font-size:0.72rem;background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px;margin-right:4px">📦 ${escHtml(r.app_source)}</span>` : '';
-      const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!=='').map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
+      const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!==''&&v!==0&&v!==false).map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
       const recJson = encodeURIComponent(JSON.stringify(r));
       return `<tr style="border-bottom:1px solid var(--border)">
         <td style="padding:10px 8px;font-size:0.82rem;color:var(--text2)">${date}</td>
