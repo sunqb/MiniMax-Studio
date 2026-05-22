@@ -26,6 +26,7 @@ func (h *Handler) Register(r *gin.Engine) {
 	{
 		// 文本生成
 		api.POST("/text/generate", h.TextGenerate)
+		api.POST("/text/generate-stream", h.TextGenerateStream)
 
 		// 语音合成
 		api.POST("/tts/synthesize", h.TTSSynthesize)

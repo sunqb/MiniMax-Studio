@@ -83,6 +83,11 @@
     line-height: 1.6; max-height: 400px; overflow-y: auto;
   }
   .result-box.error { border-color: var(--error); color: var(--error); }
+  .think-block { white-space: normal; margin: 0 0 12px; border: 1px solid var(--border); border-radius: 8px; background: rgba(15,17,23,0.35); overflow: hidden; }
+  .think-block summary { cursor: pointer; padding: 8px 12px; color: var(--text2); font-size: 0.82rem; user-select: none; }
+  .think-block summary:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+  .think-content { padding: 10px 12px; border-top: 1px solid var(--border); color: var(--text2); white-space: pre-wrap; word-break: break-word; }
+  .answer-content { white-space: pre-wrap; word-break: break-word; }
 
   .audio-player { margin-top: 12px; }
   audio { width: 100%; border-radius: 7px; }
@@ -824,8 +829,9 @@ async function generateText() {
   if (!msg) { alert('请输入用户消息'); return; }
   setLoading('text-btn', true);
   document.getElementById('text-result').style.display = 'none';
+  let preText = null;
   try {
-    const resp = await fetchT(API + '/api/text/generate', {
+    const resp = await fetchT(API + '/api/text/generate-stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -835,22 +841,60 @@ async function generateText() {
         max_tokens: parseInt(document.getElementById('text-max-tokens').value),
         temperature: parseFloat(document.getElementById('text-temperature').value),
       })
-    });
-    const data = await readJSON(resp);
-    if (!resp.ok) throw new Error(data.error || resp.statusText);
+    }, 600000);
+    if (!resp.ok) {
+      const data = await readJSON(resp);
+      throw new Error(data.error || resp.statusText);
+    }
+    if (!resp.body) throw new Error('当前浏览器不支持流式响应');
 
     document.getElementById('text-result').style.display = 'block';
     const box = document.getElementById('text-output');
     box.className = 'result-box';
-    box.textContent = data.content;
-    document.getElementById('text-stats').innerHTML =
-      `<span class="badge badge-info">模型: ${data.model}</span>` +
-      `<span class="badge badge-success">tokens: ${data.total_tokens}</span>`;
-    document.getElementById('text-upload-btn').style.display = '';
+    box.innerHTML = '';
+    document.getElementById('text-stats').innerHTML = '<span class="badge badge-info">流式生成中...</span>';
+    document.getElementById('text-upload-btn').style.display = 'none';
     document.getElementById('text-upload-result').innerHTML = '';
-    window._textContent = data.content;
-    textHistID = data.history_id || null;
+    preText = createPreTextRenderer(visible => {
+      renderTextOutput(box, visible);
+      box.scrollTop = box.scrollHeight;
+    });
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let content = '';
+    while (true) {
+      const { value, done } = await reader.read();
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+        const parts = buffer.split(/\r?\n\r?\n/);
+        buffer = parts.pop() || '';
+        for (const part of parts) {
+          const evt = parseSSEEvent(part);
+          if (!evt.data) continue;
+          const payload = JSON.parse(evt.data);
+          if (evt.event === 'delta') {
+            const delta = payload.delta || '';
+            content += delta;
+            preText.push(delta);
+          } else if (evt.event === 'error') {
+            throw new Error(payload.error || '流式生成失败');
+          } else if (evt.event === 'done') {
+            document.getElementById('text-stats').innerHTML =
+              `<span class="badge badge-info">模型: ${payload.model || ''}</span>` +
+              (payload.total_tokens ? `<span class="badge badge-success">tokens: ${payload.total_tokens}</span>` : '');
+            textHistID = payload.history_id || null;
+          }
+        }
+      }
+      if (done) break;
+    }
+    await preText.drain();
+    document.getElementById('text-upload-btn').style.display = '';
+    window._textContent = content;
   } catch(e) {
+    if (preText) preText.stop();
     document.getElementById('text-result').style.display = 'block';
     const box = document.getElementById('text-output');
     box.className = 'result-box error';
@@ -858,6 +902,98 @@ async function generateText() {
   } finally {
     setLoading('text-btn', false);
   }
+}
+
+function createPreTextRenderer(onUpdate) {
+  let queue = [];
+  let visible = '';
+  let timer = null;
+  let idleResolvers = [];
+
+  function resolveIdle() {
+    if (queue.length !== 0 || timer) return;
+    const resolvers = idleResolvers;
+    idleResolvers = [];
+    resolvers.forEach(resolve => resolve());
+  }
+
+  function schedule(delay = 22) {
+    if (timer) return;
+    timer = setTimeout(tick, delay);
+  }
+
+  function tick() {
+    timer = null;
+    if (queue.length === 0) {
+      resolveIdle();
+      return;
+    }
+
+    const batch = queue.length > 240 ? 8 : queue.length > 100 ? 4 : 1;
+    visible += queue.splice(0, batch).join('');
+    onUpdate(visible);
+
+    const last = visible.slice(-1);
+    const delay = /[。！？!?；;\n]/.test(last) ? 90 : /[，,、]/.test(last) ? 45 : 22;
+    schedule(delay);
+  }
+
+  return {
+    push(text) {
+      if (!text) return;
+      queue.push(...Array.from(text));
+      schedule();
+    },
+    drain() {
+      if (queue.length === 0 && !timer) return Promise.resolve();
+      return new Promise(resolve => idleResolvers.push(resolve));
+    },
+    stop() {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      queue = [];
+      resolveIdle();
+    },
+  };
+}
+
+function parseSSEEvent(block) {
+  let event = 'message';
+  const data = [];
+  block.split(/\r?\n/).forEach(line => {
+    if (line.startsWith('event:')) event = line.slice(6).trim();
+    else if (line.startsWith('data:')) data.push(line.slice(5).trimStart());
+  });
+  return { event, data: data.join('\n') };
+}
+
+function renderTextOutput(box, content) {
+  box.innerHTML = renderThinkBlocks(content);
+}
+
+function renderThinkBlocks(content) {
+  const parts = [];
+  const re = /<think>([\s\S]*?)(?:<\/think>|$)/gi;
+  let last = 0;
+  let match;
+  while ((match = re.exec(content)) !== null) {
+    if (match.index > last) {
+      parts.push(`<div class="answer-content">${escHtml(content.slice(last, match.index))}</div>`);
+    }
+    const closed = match[0].toLowerCase().endsWith('</think>');
+    const label = closed ? '思考过程' : '思考中...';
+    parts.push(
+      `<details class="think-block" ${closed ? '' : 'open'}>` +
+      `<summary>${label}</summary>` +
+      `<div class="think-content">${escHtml(match[1].trim())}</div>` +
+      `</details>`
+    );
+    last = match.index + match[0].length;
+  }
+  if (last < content.length) {
+    parts.push(`<div class="answer-content">${escHtml(content.slice(last))}</div>`);
+  }
+  return parts.join('') || '';
 }
 
 // ===== 语音合成 =====
@@ -1294,6 +1430,7 @@ async function deleteFile(fileID, purpose, btn) {
 // ===== 历史记录 =====
 const HIST_TYPE_LABEL = { music:'🎵 音乐', tts:'🎙️ 语音', text:'📝 文本', clone:'🔊 声音复刻', image:'🖼️ 图像' };
 let histPage = 1;
+const histRecordCache = new Map();
 
 async function loadHistory(page) {
   histPage = page || 1;
@@ -1310,6 +1447,7 @@ async function loadHistory(page) {
     if (!resp.ok) throw new Error(data.error || resp.statusText);
 
     const records = data.records || [];
+    records.forEach(r => histRecordCache.set(r.id, r));
     if (records.length === 0) {
       container.innerHTML = '<div style="color:var(--text2);text-align:center;padding:24px">暂无历史记录</div>';
       return;
@@ -1328,15 +1466,14 @@ async function loadHistory(page) {
         : '';
       const appBadge = r.app_source ? `<span style="font-size:0.72rem;background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px;margin-right:4px">📦 ${escHtml(r.app_source)}</span>` : '';
       const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!==''&&v!==0&&v!==false).map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
-      const recJson = encodeURIComponent(JSON.stringify(r));
       return `<tr id="hist-row-${r.id}" style="border-bottom:1px solid var(--border)">
         <td style="padding:10px 8px;font-size:0.82rem;color:var(--text2)">${date}</td>
         <td style="padding:10px 8px"><span class="badge badge-info">${HIST_TYPE_LABEL[r.type]||r.type}</span></td>
-        <td style="padding:10px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title}">${r.title}</td>
+        <td style="padding:10px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.title)}">${escHtml(r.title)}</td>
         <td style="padding:10px 8px;font-size:0.78rem;color:var(--text2);max-width:180px;overflow:hidden">${appBadge}${paramsStr}</td>
         <td style="padding:10px 8px;color:var(--text2);font-size:0.82rem">${size}</td>
         <td style="padding:10px 8px;white-space:nowrap">
-          <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="showHistDetail(JSON.parse(decodeURIComponent('${recJson}')))">🔍 详情</button>
+          <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="showHistDetailById('${r.id}')">🔍 详情</button>
           ${playBtn}
           ${r2Tag}
           <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem;color:var(--error)" onclick="deleteHistRecord('${r.id}',this)">🗑️</button>
@@ -1397,6 +1534,7 @@ async function loadAppHistory(page) {
     const data = await resp.json();
     if (!resp.ok) throw new Error(data.error || resp.statusText);
     const records = data.records || [];
+    records.forEach(r => histRecordCache.set(r.id, r));
     if (records.length === 0) {
       container.innerHTML = '<div style="color:var(--text2);text-align:center;padding:24px">暂无应用历史记录</div>';
       return;
@@ -1414,15 +1552,14 @@ async function loadAppHistory(page) {
         : '';
       const appBadge = r.app_source ? `<span style="font-size:0.72rem;background:var(--accent);color:#fff;border-radius:4px;padding:1px 5px;margin-right:4px">📦 ${escHtml(r.app_source)}</span>` : '';
       const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!==''&&v!==0&&v!==false).map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
-      const recJson = encodeURIComponent(JSON.stringify(r));
       return `<tr style="border-bottom:1px solid var(--border)">
         <td style="padding:10px 8px;font-size:0.82rem;color:var(--text2)">${date}</td>
         <td style="padding:10px 8px"><span class="badge badge-info">${HIST_TYPE_LABEL[r.type]||r.type}</span></td>
-        <td style="padding:10px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${r.title}">${r.title}</td>
+        <td style="padding:10px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.title)}">${escHtml(r.title)}</td>
         <td style="padding:10px 8px;font-size:0.78rem;color:var(--text2);max-width:180px;overflow:hidden">${appBadge}${paramsStr}</td>
         <td style="padding:10px 8px;color:var(--text2);font-size:0.82rem">${size}</td>
         <td style="padding:10px 8px;white-space:nowrap">
-          <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="showHistDetail(JSON.parse(decodeURIComponent('${recJson}')))">🔍 详情</button>
+          <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem" onclick="showHistDetailById('${r.id}')">🔍 详情</button>
           ${playBtn} ${r2Tag}
           <button class="btn btn-secondary" style="padding:3px 8px;font-size:0.78rem;color:var(--error)" onclick="deleteAppHistRecord('${r.id}',this)">🗑️</button>
         </td>
@@ -1490,6 +1627,15 @@ function closeHistPlayer() {
   wrap.style.display = 'none';
 }
 
+function showHistDetailById(id) {
+  const record = histRecordCache.get(id);
+  if (!record) {
+    alert('历史详情已过期，请刷新列表后重试');
+    return;
+  }
+  showHistDetail(record);
+}
+
 function showHistDetail(r) {
   const typeLabel = HIST_TYPE_LABEL[r.type] || r.type;
   const date = new Date(r.created_at).toLocaleString('zh-CN');
@@ -1531,7 +1677,7 @@ function showHistDetail(r) {
     if (content) {
       html += `<div class="detail-section">
         <div class="detail-label">生成内容</div>
-        <div class="detail-content">${escHtml(content)}</div>
+        <div class="detail-content">${renderThinkBlocks(String(content))}</div>
       </div>`;
     }
     if (lyrics) {
