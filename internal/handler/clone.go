@@ -44,7 +44,7 @@ func (h *Handler) VoiceClone(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 600*time.Second)
 	defer cancel()
 
 	resp, err := h.mm.CloneVoice(ctx, minimax.VoiceCloneParams{

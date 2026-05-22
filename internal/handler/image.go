@@ -47,7 +47,7 @@ func (h *Handler) ImageGenerate(c *gin.Context) {
 		req.AspectRatio = "1:1"
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 600*time.Second)
 	defer cancel()
 
 	urls, err := h.mm.GenerateImage(ctx, minimax.ImageParams{
@@ -147,7 +147,7 @@ func (h *Handler) ImageProxy(c *gin.Context) {
 }
 
 func fetchImageURL(url string) ([]byte, string, error) {
-	client := &http.Client{Timeout: 30 * time.Second}
+	client := &http.Client{Timeout: 600 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
 		return nil, "", fmt.Errorf("fetch %s: %w", url, err)

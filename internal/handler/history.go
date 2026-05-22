@@ -55,7 +55,7 @@ func (h *Handler) HistoryDelete(c *gin.Context) {
 	}
 	if audioURL != "" && h.r2 != nil {
 		if key := h.r2.KeyFromURL(audioURL); key != "" {
-			ctx, cancel := context.WithTimeout(c.Request.Context(), 15*time.Second)
+			ctx, cancel := context.WithTimeout(c.Request.Context(), 600*time.Second)
 			defer cancel()
 			if err := h.r2.Delete(ctx, key); err != nil {
 				log.Printf("[history] delete R2 key=%s: %v", key, err)

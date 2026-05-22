@@ -40,7 +40,7 @@ func (h *Handler) TextGenerate(c *gin.Context) {
 	}
 	messages = append(messages, minimax.TextMessage{Role: "user", Content: req.UserMessage})
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 600*time.Second)
 	defer cancel()
 
 	resp, err := h.mm.GenerateText(ctx, minimax.TextGenerateParams{

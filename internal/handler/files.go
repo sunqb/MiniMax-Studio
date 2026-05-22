@@ -12,7 +12,7 @@ import (
 func (h *Handler) FilesList(c *gin.Context) {
 	purpose := c.Query("purpose") // 可选：voice_clone / prompt_audio
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 600*time.Second)
 	defer cancel()
 
 	files, err := h.mm.ListFiles(ctx, purpose)
@@ -37,7 +37,7 @@ func (h *Handler) FilesDelete(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 600*time.Second)
 	defer cancel()
 
 	if err := h.mm.DeleteFile(ctx, req.FileID, req.Purpose); err != nil {

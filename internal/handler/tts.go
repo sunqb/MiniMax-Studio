@@ -40,7 +40,7 @@ func (h *Handler) TTSSynthesize(c *gin.Context) {
 		req.Format = "mp3"
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 90*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 600*time.Second)
 	defer cancel()
 
 	audioData, err := h.mm.SynthesizeSpeech(ctx, minimax.TTSParams{

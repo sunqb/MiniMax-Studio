@@ -30,7 +30,7 @@ func (h *Handler) LyricsGenerate(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 600*time.Second)
 	defer cancel()
 
 	// 优先使用 MiniMax 歌词生成 API（每日 100 次），任意错误降级到大模型
