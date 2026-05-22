@@ -38,7 +38,7 @@ func (h *Handler) MusicGenerate(c *gin.Context) {
 		req.Format = "mp3"
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), 180*time.Second)
+	ctx, cancel := context.WithTimeout(c.Request.Context(), 600*time.Second)
 	defer cancel()
 
 	audioData, err := h.mm.GenerateMusic(ctx, minimax.MusicParams{
