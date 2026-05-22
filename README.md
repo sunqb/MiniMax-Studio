@@ -100,7 +100,8 @@ minimax-studio/
 | POST | `/api/text/generate` | 文本生成 |
 | POST | `/api/tts/synthesize` | 语音合成 |
 | GET  | `/api/tts/voices` | 获取内置音色列表 |
-| POST | `/api/music/generate` | 音乐生成 |
+| POST | `/api/music/generate` | 音乐生成（异步，立即返回 task_id） |
+| GET  | `/api/music/task/:id` | 查询音乐生成任务状态 |
 | GET  | `/api/music/models` | 获取音乐模型列表 |
 | POST | `/api/voice/clone` | 声音复刻（multipart/form-data） |
 | GET  | `/api/files` | 列出 MiniMax 已上传文件 |
@@ -183,6 +184,7 @@ curl -X POST http://localhost:8080/api/tts/synthesize \
 ### 音乐生成（带歌词）
 
 ```bash
+# 1. 提交生成任务
 curl -X POST http://localhost:8080/api/music/generate \
   -H "Content-Type: application/json" \
   -d '{
@@ -193,6 +195,14 @@ curl -X POST http://localhost:8080/api/music/generate \
     "lyrics_optimizer": false,
     "format": "mp3"
   }'
+```
+
+**提交响应：**
+```json
+{
+  "task_id": "a1b2c3d4e5f6",
+  "status": "pending"
+}
 ```
 
 ### 音乐生成（纯音乐，无人声）
@@ -221,12 +231,47 @@ curl -X POST http://localhost:8080/api/music/generate \
   }'
 ```
 
-**响应：**
+### 查询音乐生成任务状态
+
+```bash
+# 2. 轮询任务状态（每 3 秒查询一次）
+curl http://localhost:8080/api/music/task/a1b2c3d4e5f6
+```
+
+**进行中响应：**
 ```json
 {
-  "audio": "<base64编码的MP3数据>",
-  "format": "mp3",
-  "size": 2977587
+  "id": "a1b2c3d4e5f6",
+  "type": "music",
+  "status": "running",
+  "created_at": 1716360000000
+}
+```
+
+**完成响应：**
+```json
+{
+  "id": "a1b2c3d4e5f6",
+  "type": "music",
+  "status": "completed",
+  "created_at": 1716360000000,
+  "result": {
+    "audio": "<base64编码的MP3数据>",
+    "format": "mp3",
+    "size": 2977587,
+    "history_id": "a1b2c3d4e5f6"
+  }
+}
+```
+
+**失败响应：**
+```json
+{
+  "id": "a1b2c3d4e5f6",
+  "type": "music",
+  "status": "failed",
+  "created_at": 1716360000000,
+  "error": "music API error 1001: ..."
 }
 ```
 
@@ -639,3 +684,16 @@ curl -X POST https://api.minimaxi.com/v1/files/delete \
 - 官网：[platform.minimaxi.com](https://platform.minimaxi.com)
 - Token Plan 详情：[platform.minimaxi.com/docs/token-plan/intro](https://platform.minimaxi.com/docs/token-plan/intro)
 - API 文档：[platform.minimaxi.com/docs/api-reference](https://platform.minimaxi.com/docs/api-reference)
+
+---
+
+## TODO
+
+- [ ] TTS 语音合成异步任务化（通常 <10s，低优先级）
+- [ ] 图像生成异步任务化
+- [ ] 文本生成停止按钮 + Markdown 渲染
+- [ ] 历史搜索 + 详情接口
+- [ ] 一键成歌应用
+- [ ] TTS 音色试听 + 批量配音
+- [ ] 图像自动保存 R2
+- [ ] 简单鉴权/访问密码

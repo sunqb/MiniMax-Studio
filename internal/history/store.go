@@ -26,6 +26,8 @@ type Record struct {
 	Size      int64          `json:"size,omitempty"`
 	Extra     map[string]any `json:"extra,omitempty"`
 	AppSource string         `json:"app_source,omitempty"` // 来源应用，空=原子功能直接调用
+	Status    string         `json:"status,omitempty"`     // pending / running / completed / failed，空=completed（兼容旧数据）
+	Error     string         `json:"error,omitempty"`      // 失败原因
 }
 
 // Store 是基于 SQLite 的历史记录存储，DB 文件放在 data/ 目录下
@@ -75,6 +77,12 @@ func migrate(db *sql.DB) error {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_hist_app ON history(app_source, created_at DESC)`); err != nil {
 		return err
 	}
+	// 4. 异步任务：添加 status 和 error 列（兼容旧库）
+	_, _ = db.Exec(`ALTER TABLE history ADD COLUMN status TEXT NOT NULL DEFAULT ''`)
+	_, _ = db.Exec(`ALTER TABLE history ADD COLUMN error TEXT NOT NULL DEFAULT ''`)
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_hist_status ON history(status)`); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -95,10 +103,11 @@ func (s *Store) Add(ctx context.Context, r *Record) error {
 	extra, _ := json.Marshal(r.Extra)
 
 	_, err := s.db.ExecContext(ctx,
-		`INSERT INTO history (id, type, created_at, title, params, audio_url, size, extra, app_source)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO history (id, type, created_at, title, params, audio_url, size, extra, app_source, status, error)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		r.ID, r.Type, r.CreatedAt, r.Title,
 		string(params), r.AudioURL, r.Size, string(extra), r.AppSource,
+		r.Status, r.Error,
 	)
 	return err
 }
@@ -145,7 +154,7 @@ func (s *Store) List(ctx context.Context, p ListParams) ([]*Record, int64, error
 		return nil, 0, err
 	}
 
-	listQuery := "SELECT id, type, created_at, title, params, audio_url, size, extra, app_source FROM history" +
+	listQuery := "SELECT id, type, created_at, title, params, audio_url, size, extra, app_source, status, error FROM history" +
 		where + " ORDER BY created_at DESC LIMIT ? OFFSET ?"
 	queryArgs := append(args, p.Size, offset)
 
@@ -160,7 +169,7 @@ func (s *Store) List(ctx context.Context, p ListParams) ([]*Record, int64, error
 		var r Record
 		var params, extra string
 		if err := rows.Scan(&r.ID, &r.Type, &r.CreatedAt, &r.Title,
-			&params, &r.AudioURL, &r.Size, &extra, &r.AppSource); err != nil {
+			&params, &r.AudioURL, &r.Size, &extra, &r.AppSource, &r.Status, &r.Error); err != nil {
 			return nil, 0, err
 		}
 		_ = json.Unmarshal([]byte(params), &r.Params)
@@ -168,6 +177,58 @@ func (s *Store) List(ctx context.Context, p ListParams) ([]*Record, int64, error
 		records = append(records, &r)
 	}
 	return records, total, rows.Err()
+}
+
+// GetByID 按 ID 查询单条记录（轮询任务状态用）
+func (s *Store) GetByID(ctx context.Context, id string) (*Record, error) {
+	var r Record
+	var params, extra string
+	err := s.db.QueryRowContext(ctx,
+		`SELECT id, type, created_at, title, params, audio_url, size, extra, app_source, status, error
+		 FROM history WHERE id = ?`, id).Scan(
+		&r.ID, &r.Type, &r.CreatedAt, &r.Title,
+		&params, &r.AudioURL, &r.Size, &extra, &r.AppSource,
+		&r.Status, &r.Error,
+	)
+	if err == sql.ErrNoRows {
+		return nil, fmt.Errorf("record %s not found", id)
+	}
+	if err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(params), &r.Params)
+	_ = json.Unmarshal([]byte(extra), &r.Extra)
+	return &r, nil
+}
+
+// UpdateStatus 更新任务状态
+func (s *Store) UpdateStatus(ctx context.Context, id, status, errMsg string) error {
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE history SET status = ?, error = ? WHERE id = ?`, status, errMsg, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("record %s not found", id)
+	}
+	return nil
+}
+
+// UpdateResult 完成时回写 extra 和 size
+func (s *Store) UpdateResult(ctx context.Context, id string, extra map[string]any, size int64) error {
+	extraJSON, _ := json.Marshal(extra)
+	res, err := s.db.ExecContext(ctx,
+		`UPDATE history SET extra = ?, size = ?, status = 'completed' WHERE id = ?`,
+		string(extraJSON), size, id)
+	if err != nil {
+		return err
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("record %s not found", id)
+	}
+	return nil
 }
 
 // UpdateAudioURL 更新指定记录的 R2 音频地址（手动上传 R2 后调用）

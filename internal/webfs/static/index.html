@@ -98,6 +98,19 @@
   .badge-info { background: #1e3a5f; color: #93c5fd; }
   .badge-success { background: #064e3b; color: var(--success); }
 
+  .status-dot { display:inline-block; width:10px; height:10px; border-radius:999px; background:var(--success); box-shadow:0 0 0 3px rgba(52,211,153,0.12); vertical-align:middle; }
+  .status-dot.pending { background:var(--warn); box-shadow:0 0 0 3px rgba(251,191,36,0.12); }
+  .status-dot.running { background:var(--accent2); box-shadow:0 0 0 3px rgba(167,139,250,0.14); animation:pulse 1.2s ease-in-out infinite; }
+  .status-dot.failed { background:var(--error); box-shadow:0 0 0 3px rgba(248,113,113,0.14); }
+  .status-bar { width:54px; height:6px; border-radius:999px; overflow:hidden; background:var(--surface2); border:1px solid var(--border); }
+  .status-bar-fill { height:100%; width:100%; background:var(--success); border-radius:999px; }
+  .status-bar-fill.pending { width:32%; background:var(--warn); }
+  .status-bar-fill.running { width:64%; background:linear-gradient(90deg,var(--accent),var(--accent2),var(--accent)); background-size:200% 100%; animation:barMove 1.1s linear infinite; }
+  .status-bar-fill.failed { width:100%; background:var(--error); }
+  .status-detail { display:flex; align-items:center; gap:10px; }
+  @keyframes pulse { 0%,100% { opacity:.55; transform:scale(.9); } 50% { opacity:1; transform:scale(1.15); } }
+  @keyframes barMove { to { background-position:200% 0; } }
+
   .stats { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
 
   .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.7s linear infinite; }
@@ -326,6 +339,15 @@
             <input type="checkbox" id="music-instrumental" style="width:auto;padding:0">
             纯音乐（无人声）
           </label>
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <label style="display:flex;align-items:center;gap:6px;cursor:pointer;margin:0">
+          <input type="checkbox" id="music-auto-upload-r2" checked style="width:auto;padding:0">
+          完成后自动上传到 R2
+        </label>
+        <div style="font-size:0.8rem;color:var(--text2);margin-top:6px">
+          建议保持勾选：即使关闭页面，生成完成后也会保存到历史记录。未勾选时只在当前页面临时展示，关闭页面后不会保存生成音频数据。
         </div>
       </div>
       <div class="action-row">
@@ -1038,10 +1060,15 @@ async function synthesizeSpeech() {
 }
 
 // ===== 音乐生成 =====
+let _musicPollTimer = null;
+
 async function generateMusic() {
   setLoading('music-btn', true);
   document.getElementById('music-result').style.display = 'none';
+  const statsEl = document.getElementById('music-stats');
+
   try {
+    // 1. 发起异步请求，立即拿到 task_id
     const resp = await fetchT(API + '/api/music/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1052,26 +1079,92 @@ async function generateMusic() {
         is_instrumental: document.getElementById('music-instrumental').checked,
         lyrics_optimizer: !document.getElementById('music-instrumental').checked && !document.getElementById('music-lyrics').value.trim(),
         format: 'mp3',
+        auto_upload_r2: document.getElementById('music-auto-upload-r2').checked,
       })
-    }, 600000);
+    }, 10000);
     const data = await readJSON(resp);
     if (!resp.ok) throw new Error(data.error || resp.statusText);
 
-    musicAudioB64 = data.audio;
-    musicHistID = data.history_id || null;
-    const audioEl = document.getElementById('music-audio');
-    audioEl.src = 'data:audio/mpeg;base64,' + data.audio;
-    document.getElementById('music-result').style.display = 'block';
-    document.getElementById('music-stats').innerHTML =
-      `<span class="badge badge-info">大小: ${(data.size/1024).toFixed(1)} KB</span>`;
-    document.getElementById('music-upload-btn').style.display = '';
-    document.getElementById('music-upload-result').innerHTML = '';
-  } catch(e) {
+    const taskId = data.task_id;
+    if (!taskId) throw new Error('未获取到任务 ID');
+
+    // 2. 显示生成中状态
     document.getElementById('music-result').style.display = 'block';
     document.getElementById('music-audio').src = '';
-    document.getElementById('music-stats').innerHTML = `<span style="color:var(--error)">错误：${e.message}</span>`;
-  } finally {
+    document.getElementById('music-upload-btn').style.display = 'none';
+    document.getElementById('music-upload-result').innerHTML = '';
+    const autoUploadR2 = document.getElementById('music-auto-upload-r2').checked;
+    statsEl.innerHTML = '<span class="badge badge-info">生成中... (已等待 0s)</span>';
+    if (!autoUploadR2) {
+      document.getElementById('music-upload-result').innerHTML = '<div style="font-size:0.82rem;color:var(--warn);margin-top:8px">未勾选自动上传：关闭页面后不会保存生成音频数据。</div>';
+    }
+
+    // 3. 定时轮询，3s 一次，最长 10 分钟
+    if (_musicPollTimer) clearInterval(_musicPollTimer);
+    const startTime = Date.now();
+    const MAX_WAIT = 10 * 60 * 1000;
+
+    _musicPollTimer = setInterval(async () => {
+      try {
+        const pollResp = await fetchT(API + '/api/music/task/' + taskId, {}, 10000);
+        const task = await readJSON(pollResp);
+        if (!pollResp.ok) throw new Error(task.error || pollResp.statusText);
+
+        const elapsed = Math.round((Date.now() - startTime) / 1000);
+
+        if (task.status === 'completed') {
+          clearInterval(_musicPollTimer);
+          _musicPollTimer = null;
+          setLoading('music-btn', false);
+
+          const result = task.result;
+          if (!result || !result.audio) {
+            statsEl.innerHTML = '<span style="color:var(--error)">错误：结果数据缺失</span>';
+            return;
+          }
+          musicAudioB64 = result.audio;
+          musicHistID = result.history_id || taskId;
+          document.getElementById('music-audio').src = 'data:audio/mpeg;base64,' + result.audio;
+          statsEl.innerHTML = `<span class="badge badge-info">大小: ${(result.size/1024).toFixed(1)} KB</span>`;
+          document.getElementById('music-upload-btn').style.display = '';
+          if (result.public_url || task.audio_url) {
+            const url = result.public_url || task.audio_url;
+            document.getElementById('music-upload-result').innerHTML = `<div class="upload-result">✅ 已自动上传到 R2，已同步历史记录<br>URL：<a href="${url}" target="_blank">${url}</a></div>`;
+          } else {
+            document.getElementById('music-upload-result').innerHTML = autoUploadR2 ? '' : '<div style="font-size:0.82rem;color:var(--warn);margin-top:8px">未勾选自动上传：关闭页面后不会保存生成音频数据。</div>';
+          }
+          return;
+        }
+
+        if (task.status === 'failed') {
+          clearInterval(_musicPollTimer);
+          _musicPollTimer = null;
+          setLoading('music-btn', false);
+          document.getElementById('music-audio').src = '';
+          statsEl.innerHTML = `<span style="color:var(--error)">错误：${task.error || '生成失败'}</span>`;
+          return;
+        }
+
+        // pending / running → 更新等待时间
+        if (Date.now() - startTime > MAX_WAIT) {
+          clearInterval(_musicPollTimer);
+          _musicPollTimer = null;
+          setLoading('music-btn', false);
+          statsEl.innerHTML = '<span style="color:var(--error)">生成超时（超过 10 分钟），请稍后在历史记录中查看</span>';
+          return;
+        }
+        statsEl.innerHTML = `<span class="badge badge-info">生成中... (已等待 ${elapsed}s)</span>`;
+      } catch (e) {
+        // 网络抖动不中断轮询
+        console.warn('music poll error:', e);
+      }
+    }, 3000);
+
+  } catch(e) {
     setLoading('music-btn', false);
+    document.getElementById('music-result').style.display = 'block';
+    document.getElementById('music-audio').src = '';
+    statsEl.innerHTML = `<span style="color:var(--error)">错误：${e.message}</span>`;
   }
 }
 
@@ -1432,6 +1525,21 @@ const HIST_TYPE_LABEL = { music:'🎵 音乐', tts:'🎙️ 语音', text:'📝 
 let histPage = 1;
 const histRecordCache = new Map();
 
+function effectiveHistStatus(r) {
+  return r.status || 'completed';
+}
+
+function histStatusHTML(r, mode = 'list') {
+  const status = effectiveHistStatus(r);
+  const safeStatus = ['pending', 'running', 'completed', 'failed'].includes(status) ? status : 'completed';
+  const titleMap = { pending: '等待中', running: '生成中', completed: '已完成', failed: '失败' };
+  const title = titleMap[safeStatus] || titleMap.completed;
+  if (mode === 'detail') {
+    return `<span class="status-detail" title="${title}"><span class="status-dot ${safeStatus}"></span><span class="status-bar"><span class="status-bar-fill ${safeStatus}"></span></span></span>`;
+  }
+  return `<span title="${title}" class="status-dot ${safeStatus}"></span>`;
+}
+
 async function loadHistory(page) {
   histPage = page || 1;
   const type = document.getElementById('hist-type').value;
@@ -1468,6 +1576,7 @@ async function loadHistory(page) {
       const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!==''&&v!==0&&v!==false).map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
       return `<tr id="hist-row-${r.id}" style="border-bottom:1px solid var(--border)">
         <td style="padding:10px 8px;font-size:0.82rem;color:var(--text2)">${date}</td>
+        <td style="padding:10px 8px;text-align:center">${histStatusHTML(r)}</td>
         <td style="padding:10px 8px"><span class="badge badge-info">${HIST_TYPE_LABEL[r.type]||r.type}</span></td>
         <td style="padding:10px 8px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.title)}">${escHtml(r.title)}</td>
         <td style="padding:10px 8px;font-size:0.78rem;color:var(--text2);max-width:180px;overflow:hidden">${appBadge}${paramsStr}</td>
@@ -1491,6 +1600,7 @@ async function loadHistory(page) {
         <thead>
           <tr style="border-bottom:1px solid var(--border);color:var(--text2)">
             <th style="text-align:left;padding:8px">时间</th>
+            <th style="text-align:center;padding:8px;width:46px">状态</th>
             <th style="text-align:left;padding:8px">类型</th>
             <th style="text-align:left;padding:8px">标题</th>
             <th style="text-align:left;padding:8px">参数</th>
@@ -1554,6 +1664,7 @@ async function loadAppHistory(page) {
       const paramsStr = r.params ? Object.entries(r.params).filter(([k,v])=>v!==null&&v!==''&&v!==0&&v!==false).map(([k,v])=>`<span style="opacity:.7">${k}:</span> ${v}`).join(' &nbsp;') : '';
       return `<tr style="border-bottom:1px solid var(--border)">
         <td style="padding:10px 8px;font-size:0.82rem;color:var(--text2)">${date}</td>
+        <td style="padding:10px 8px;text-align:center">${histStatusHTML(r)}</td>
         <td style="padding:10px 8px"><span class="badge badge-info">${HIST_TYPE_LABEL[r.type]||r.type}</span></td>
         <td style="padding:10px 8px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${escHtml(r.title)}">${escHtml(r.title)}</td>
         <td style="padding:10px 8px;font-size:0.78rem;color:var(--text2);max-width:180px;overflow:hidden">${appBadge}${paramsStr}</td>
@@ -1568,6 +1679,7 @@ async function loadAppHistory(page) {
     container.innerHTML = `<table style="width:100%;border-collapse:collapse;font-size:0.88rem">
       <thead><tr style="border-bottom:1px solid var(--border);color:var(--text2)">
         <th style="text-align:left;padding:8px">时间</th>
+        <th style="text-align:center;padding:8px;width:46px">状态</th>
         <th style="text-align:left;padding:8px">类型</th>
         <th style="text-align:left;padding:8px">标题</th>
         <th style="text-align:left;padding:8px">来源/参数</th>
@@ -1648,9 +1760,17 @@ function showHistDetail(r) {
       <span class="dk">ID</span><span class="dv" style="font-family:monospace;font-size:0.82rem">${r.id}</span>
       <span class="dk">类型</span><span class="dv">${typeLabel}</span>
       <span class="dk">时间</span><span class="dv">${date}</span>
+      <span class="dk">状态</span><span class="dv">${histStatusHTML(r, 'detail')}</span>
       <span class="dk">大小</span><span class="dv">${size}</span>
     </div>
   </div>`;
+
+  if (effectiveHistStatus(r) === 'failed' && r.error) {
+    html += `<div class="detail-section">
+      <div class="detail-label">错误信息</div>
+      <div class="detail-content" style="border-color:var(--error);color:var(--error)">${escHtml(r.error)}</div>
+    </div>`;
+  }
 
   // 标题
   html += `<div class="detail-section">

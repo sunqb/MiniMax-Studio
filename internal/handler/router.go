@@ -2,6 +2,7 @@ package handler
 
 import (
 	"net/http"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 	"github.com/sunqb/minimax-studio/internal/config"
@@ -11,14 +12,22 @@ import (
 )
 
 type Handler struct {
-	cfg  *config.Config
-	mm   *minimax.Client
-	r2   *storage.R2Client
-	hist *history.Store // nil 表示历史功能禁用
+	cfg        *config.Config
+	mm         *minimax.Client
+	r2         *storage.R2Client
+	hist       *history.Store // nil 表示历史功能禁用
+	taskResults sync.Map      // taskID → *TaskResult（临时缓存音频等大数据）
+	musicSem   chan struct{}  // 音乐生成并发信号量
 }
 
 func New(cfg *config.Config, mm *minimax.Client, r2 *storage.R2Client, hist *history.Store) *Handler {
-	return &Handler{cfg: cfg, mm: mm, r2: r2, hist: hist}
+	return &Handler{
+		cfg:      cfg,
+		mm:       mm,
+		r2:       r2,
+		hist:     hist,
+		musicSem: make(chan struct{}, 3), // 同时最多 3 个音乐生成任务
+	}
 }
 
 func (h *Handler) Register(r *gin.Engine) {
@@ -34,6 +43,7 @@ func (h *Handler) Register(r *gin.Engine) {
 
 		// 音乐合成
 		api.POST("/music/generate", h.MusicGenerate)
+		api.GET("/music/task/:id", h.MusicTaskStatus)
 		api.GET("/music/models", h.MusicModels)
 		api.POST("/lyrics/generate", h.LyricsGenerate)
 
