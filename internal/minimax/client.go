@@ -8,6 +8,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -50,6 +51,7 @@ func (c *Client) post(ctx context.Context, path, query string, body any) ([]byte
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -63,7 +65,11 @@ func (c *Client) post(ctx context.Context, path, query string, body any) ([]byte
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, responseSnippet(respBody))
+	}
+
+	if looksLikeHTML(respBody, resp.Header.Get("Content-Type")) {
+		return nil, fmt.Errorf("API returned HTML instead of JSON: %s", responseSnippet(respBody))
 	}
 
 	return respBody, nil
@@ -95,6 +101,7 @@ func (c *Client) postMultipart(ctx context.Context, path string, fields map[stri
 	}
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", w.FormDataContentType())
+	req.Header.Set("Accept", "application/json")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -108,9 +115,32 @@ func (c *Client) postMultipart(ctx context.Context, path string, fields map[stri
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, string(respBody))
+		return nil, fmt.Errorf("API error %d: %s", resp.StatusCode, responseSnippet(respBody))
+	}
+
+	if looksLikeHTML(respBody, resp.Header.Get("Content-Type")) {
+		return nil, fmt.Errorf("API returned HTML instead of JSON: %s", responseSnippet(respBody))
 	}
 
 	return respBody, nil
 }
 
+func looksLikeHTML(body []byte, contentType string) bool {
+	if strings.Contains(strings.ToLower(contentType), "text/html") {
+		return true
+	}
+	trimmed := strings.TrimSpace(string(body))
+	return strings.HasPrefix(trimmed, "<")
+}
+
+func responseSnippet(body []byte) string {
+	text := strings.TrimSpace(string(body))
+	text = strings.Join(strings.Fields(text), " ")
+	if len(text) > 300 {
+		text = text[:300] + "..."
+	}
+	if text == "" {
+		return "empty response body"
+	}
+	return text
+}

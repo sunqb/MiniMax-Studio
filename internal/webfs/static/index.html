@@ -681,6 +681,17 @@ function fetchT(url, options = {}, ms = 120000) {
   return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(tid));
 }
 
+async function readJSON(resp) {
+  const text = await resp.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch(e) {
+    const preview = text.replace(/\s+/g, ' ').trim().slice(0, 180);
+    throw new Error(`接口返回的不是 JSON（HTTP ${resp.status} ${resp.statusText}）：${preview || e.message}`);
+  }
+}
+
 // 切换第一层（应用市集 / 原子功能）
 function switchSection(section) {
   document.getElementById('nav-apps').classList.toggle('active', section === 'apps');
@@ -728,7 +739,7 @@ function switchTab(name) {
 async function fetchClonedVoices() {
   try {
     const resp = await fetchT(API + '/api/voice/cloned', {}, 8000);
-    const data = await resp.json();
+    const data = await readJSON(resp);
     return data.voices || [];
   } catch(e) {
     console.warn('fetchClonedVoices failed:', e);
@@ -825,7 +836,7 @@ async function generateText() {
         temperature: parseFloat(document.getElementById('text-temperature').value),
       })
     });
-    const data = await resp.json();
+    const data = await readJSON(resp);
     if (!resp.ok) throw new Error(data.error || resp.statusText);
 
     document.getElementById('text-result').style.display = 'block';
@@ -869,7 +880,7 @@ async function synthesizeSpeech() {
         format: 'mp3',
       })
     });
-    const data = await resp.json();
+    const data = await readJSON(resp);
     if (!resp.ok) throw new Error(data.error || resp.statusText);
 
     ttsAudioB64 = data.audio;
@@ -903,10 +914,11 @@ async function generateMusic() {
         prompt: document.getElementById('music-prompt').value,
         lyrics: document.getElementById('music-lyrics').value,
         is_instrumental: document.getElementById('music-instrumental').checked,
+        lyrics_optimizer: !document.getElementById('music-instrumental').checked && !document.getElementById('music-lyrics').value.trim(),
         format: 'mp3',
       })
     }, 600000);
-    const data = await resp.json();
+    const data = await readJSON(resp);
     if (!resp.ok) throw new Error(data.error || resp.statusText);
 
     musicAudioB64 = data.audio;
