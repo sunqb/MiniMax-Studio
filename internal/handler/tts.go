@@ -43,7 +43,8 @@ func (h *Handler) TTSSynthesize(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 600*time.Second)
 	defer cancel()
 
-	audioData, err := h.mm.SynthesizeSpeech(ctx, minimax.TTSParams{
+	ttsClient := h.ttsClientForVoice(req.VoiceID)
+	audioData, err := ttsClient.SynthesizeSpeech(ctx, minimax.TTSParams{
 		Text:    req.Text,
 		VoiceID: req.VoiceID,
 		Speed:   req.Speed,
@@ -89,4 +90,21 @@ func (h *Handler) TTSSynthesize(c *gin.Context) {
 
 func (h *Handler) TTSVoices(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"voices": minimax.VoiceList})
+}
+
+// ttsClientForVoice 使用内置音色时走 Token Plan Key；使用克隆音色时走按量 Key。
+func (h *Handler) ttsClientForVoice(voiceID string) *minimax.Client {
+	if voiceID == "" || isBuiltinVoice(voiceID) {
+		return h.mm
+	}
+	return h.cloneMM
+}
+
+func isBuiltinVoice(voiceID string) bool {
+	for _, v := range minimax.VoiceList {
+		if v["id"] == voiceID {
+			return true
+		}
+	}
+	return false
 }

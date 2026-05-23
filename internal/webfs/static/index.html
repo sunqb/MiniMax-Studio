@@ -170,9 +170,26 @@
     word-break: break-word;
   }
   .modal-footer { padding: 14px 20px; border-top: 1px solid var(--border); display: flex; gap: 10px; justify-content: flex-end; flex-shrink: 0; }
+
+  .auth-overlay { position: fixed; inset: 0; z-index: 2000; background: rgba(15,17,23,0.96); display: none; align-items: center; justify-content: center; padding: 20px; }
+  .auth-card { width: 100%; max-width: 360px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 24px; box-shadow: 0 24px 60px rgba(0,0,0,0.55); }
+  .auth-card h2 { font-size: 1.1rem; margin-bottom: 8px; }
+  .auth-card p { color: var(--text2); font-size: 0.85rem; line-height: 1.6; margin-bottom: 16px; }
+  .auth-error { color: var(--error); font-size: 0.82rem; margin-top: 10px; min-height: 18px; }
 </style>
 </head>
 <body>
+<div class="auth-overlay" id="auth-overlay">
+  <div class="auth-card">
+    <h2>访问验证</h2>
+    <p>请输入网站访问密码后继续使用 MiniMax Studio。</p>
+    <input type="password" id="auth-password" placeholder="访问密码" onkeydown="if(event.key==='Enter')submitSitePassword()">
+    <div class="action-row" style="margin-top:14px">
+      <button class="btn btn-primary" id="auth-submit" onclick="submitSitePassword()">进入</button>
+    </div>
+    <div class="auth-error" id="auth-error"></div>
+  </div>
+</div>
 <div class="app">
   <header>
     <h1>⚡ MiniMax Studio</h1>
@@ -697,6 +714,7 @@
 
 <script>
 const API = '';
+const AUTH_STORAGE_KEY = 'minimax_studio_site_password';
 let ttsAudioB64 = null, ttsHistID = null;
 let musicAudioB64 = null, musicHistID = null;
 let textHistID = null;
@@ -705,7 +723,57 @@ let textHistID = null;
 function fetchT(url, options = {}, ms = 120000) {
   const ctrl = new AbortController();
   const tid = setTimeout(() => ctrl.abort(), ms);
-  return fetch(url, { ...options, signal: ctrl.signal }).finally(() => clearTimeout(tid));
+  const headers = new Headers(options.headers || {});
+  const sitePassword = localStorage.getItem(AUTH_STORAGE_KEY) || '';
+  if (sitePassword) headers.set('X-Site-Password', sitePassword);
+  return fetch(url, { ...options, headers, signal: ctrl.signal }).finally(() => clearTimeout(tid));
+}
+
+function showAuthOverlay() {
+  const overlay = document.getElementById('auth-overlay');
+  overlay.style.display = 'flex';
+  setTimeout(() => document.getElementById('auth-password').focus(), 0);
+}
+
+function hideAuthOverlay() {
+  document.getElementById('auth-overlay').style.display = 'none';
+}
+
+async function ensureAuthenticated() {
+  try {
+    const resp = await fetchT(API + '/api/auth/check', {}, 8000);
+    if (resp.ok) {
+      hideAuthOverlay();
+      return true;
+    }
+  } catch(e) {
+    console.warn('auth check failed:', e);
+  }
+  showAuthOverlay();
+  return false;
+}
+
+async function submitSitePassword() {
+  const input = document.getElementById('auth-password');
+  const btn = document.getElementById('auth-submit');
+  const errEl = document.getElementById('auth-error');
+  const password = input.value.trim();
+  if (!password) { errEl.textContent = '请输入访问密码'; return; }
+  btn.disabled = true;
+  errEl.textContent = '';
+  localStorage.setItem(AUTH_STORAGE_KEY, password);
+  try {
+    const ok = await ensureAuthenticated();
+    if (!ok) {
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      errEl.textContent = '密码错误';
+      input.select();
+    } else {
+      initApp();
+    }
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 async function readJSON(resp) {
@@ -2031,9 +2099,16 @@ function dubReset() {
   document.getElementById('dub-upload-btn').style.display = 'none';
 }
 
-init();
-// 默认展示应用市集
-switchSection('apps');
+let _appInitialized = false;
+function initApp() {
+  if (_appInitialized) return;
+  _appInitialized = true;
+  init();
+  // 默认展示应用市集
+  switchSection('apps');
+}
+
+ensureAuthenticated().then(ok => { if (ok) initApp(); });
 </script>
 </body>
 </html>

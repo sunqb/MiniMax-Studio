@@ -2,9 +2,11 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -47,7 +49,7 @@ func (h *Handler) VoiceClone(c *gin.Context) {
 	ctx, cancel := context.WithTimeout(c.Request.Context(), 600*time.Second)
 	defer cancel()
 
-	resp, err := h.mm.CloneVoice(ctx, minimax.VoiceCloneParams{
+	resp, err := h.cloneMM.CloneVoice(ctx, minimax.VoiceCloneParams{
 		FileData:                data,
 		Filename:                fh.Filename,
 		VoiceID:                 voiceID,
@@ -61,6 +63,25 @@ func (h *Handler) VoiceClone(c *gin.Context) {
 		return
 	}
 
+	demoAudioURL := resp.DemoAudio
+	demoAudioSize := int64(0)
+	if resp.DemoAudio != "" && h.r2 != nil {
+		audioData, ext, err := fetchAudioURL(resp.DemoAudio)
+		if err != nil {
+			log.Printf("[clone] fetch demo audio for R2: %v", err)
+		} else {
+			demoAudioSize = int64(len(audioData))
+			uploadCtx, uploadCancel := context.WithTimeout(c.Request.Context(), 120*time.Second)
+			defer uploadCancel()
+			result, err := h.r2.Upload(uploadCtx, "clone", ext, audioData)
+			if err != nil {
+				log.Printf("[clone] upload demo audio to R2: %v", err)
+			} else if result.PublicURL != "" {
+				demoAudioURL = result.PublicURL
+			}
+		}
+	}
+
 	histID := ""
 	rec := &history.Record{
 		Type:  "clone",
@@ -69,10 +90,14 @@ func (h *Handler) VoiceClone(c *gin.Context) {
 			"voice_id": voiceID,
 			"filename": fh.Filename,
 		},
-		AudioURL: resp.DemoAudio, // MiniMax 试听链接直接作为 audio_url
+		AudioURL: demoAudioURL,
+		Size:     demoAudioSize,
 	}
 	if resp.DemoAudio != "" {
-		rec.Extra = map[string]any{"demo_audio": resp.DemoAudio}
+		rec.Extra = map[string]any{
+			"demo_audio": resp.DemoAudio,
+			"demo_r2":    demoAudioURL,
+		}
 	}
 	if err := h.hist.Add(c.Request.Context(), rec); err != nil {
 		log.Printf("[history] clone: %v", err)
@@ -82,9 +107,62 @@ func (h *Handler) VoiceClone(c *gin.Context) {
 
 	c.JSON(http.StatusOK, VoiceCloneResponse{
 		VoiceID:   voiceID,
-		DemoAudio: resp.DemoAudio,
+		DemoAudio: demoAudioURL,
 		HistoryID: histID,
 	})
+}
+
+func fetchAudioURL(url string) ([]byte, string, error) {
+	client := &http.Client{Timeout: 600 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return nil, "", fmt.Errorf("fetch %s: %w", url, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, "", fmt.Errorf("fetch %s: status %d", url, resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, "", fmt.Errorf("read body: %w", err)
+	}
+
+	ext := audioExtFromContentType(resp.Header.Get("Content-Type"))
+	if ext == "" {
+		ext = audioExtFromURL(url)
+	}
+	if ext == "" {
+		ext = "mp3"
+	}
+	return data, ext, nil
+}
+
+func audioExtFromContentType(ct string) string {
+	ct = strings.ToLower(strings.Split(ct, ";")[0])
+	switch ct {
+	case "audio/mpeg", "audio/mp3":
+		return "mp3"
+	case "audio/wav", "audio/x-wav", "audio/wave":
+		return "wav"
+	case "audio/ogg":
+		return "ogg"
+	case "audio/flac":
+		return "flac"
+	case "audio/mp4", "audio/x-m4a":
+		return "m4a"
+	}
+	return ""
+}
+
+func audioExtFromURL(url string) string {
+	u := strings.ToLower(strings.Split(url, "?")[0])
+	for _, ext := range []string{"mp3", "wav", "ogg", "flac", "m4a"} {
+		if strings.HasSuffix(u, "."+ext) {
+			return ext
+		}
+	}
+	return ""
 }
 
 // ClonedVoiceList 从历史记录中提取所有已复刻的音色 ID（去重，按时间倒序）

@@ -26,6 +26,11 @@ func main() {
 	}
 
 	mmClient := minimax.NewClient(cfg.MinimaxAPIKey, cfg.MinimaxBaseURL)
+	cloneMMClient := mmClient
+	if cfg.MinimaxPaygAPIKey != "" {
+		cloneMMClient = minimax.NewClient(cfg.MinimaxPaygAPIKey, cfg.MinimaxBaseURL)
+		log.Println("MiniMax PAYG client initialized for voice clone")
+	}
 
 	r2Client, err := storage.NewR2Client(
 		cfg.R2AccountID,
@@ -55,7 +60,7 @@ func main() {
 	r.Use(func(c *gin.Context) {
 		c.Header("Access-Control-Allow-Origin", "*")
 		c.Header("Access-Control-Allow-Methods", "GET,POST,DELETE,OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Content-Type")
+		c.Header("Access-Control-Allow-Headers", "Content-Type, X-Site-Password, Authorization")
 		if c.Request.Method == http.MethodOptions {
 			c.AbortWithStatus(http.StatusNoContent)
 			return
@@ -63,7 +68,7 @@ func main() {
 		c.Next()
 	})
 
-	h := handler.New(cfg, mmClient, r2Client, histStore)
+	h := handler.New(cfg, mmClient, cloneMMClient, r2Client, histStore)
 	h.Register(r)
 
 	// 静态文件：HTML 禁止缓存，保证重新部署后立即生效

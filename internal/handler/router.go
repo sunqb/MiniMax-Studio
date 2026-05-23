@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"sync"
 
@@ -14,16 +15,21 @@ import (
 type Handler struct {
 	cfg        *config.Config
 	mm         *minimax.Client
+	cloneMM    *minimax.Client
 	r2         *storage.R2Client
 	hist       *history.Store // nil 表示历史功能禁用
 	taskResults sync.Map      // taskID → *TaskResult（临时缓存音频等大数据）
 	musicSem   chan struct{}  // 音乐生成并发信号量
 }
 
-func New(cfg *config.Config, mm *minimax.Client, r2 *storage.R2Client, hist *history.Store) *Handler {
+func New(cfg *config.Config, mm, cloneMM *minimax.Client, r2 *storage.R2Client, hist *history.Store) *Handler {
+	if cloneMM == nil {
+		cloneMM = mm
+	}
 	return &Handler{
 		cfg:      cfg,
 		mm:       mm,
+		cloneMM:  cloneMM,
 		r2:       r2,
 		hist:     hist,
 		musicSem: make(chan struct{}, 3), // 同时最多 3 个音乐生成任务
@@ -32,7 +38,13 @@ func New(cfg *config.Config, mm *minimax.Client, r2 *storage.R2Client, hist *his
 
 func (h *Handler) Register(r *gin.Engine) {
 	api := r.Group("/api")
+	api.Use(h.authMiddleware())
 	{
+		// 鉴权检查
+		api.GET("/auth/check", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"ok": true})
+		})
+
 		// 文本生成
 		api.POST("/text/generate", h.TextGenerate)
 		api.POST("/text/generate-stream", h.TextGenerateStream)
@@ -72,4 +84,28 @@ func (h *Handler) Register(r *gin.Engine) {
 	r.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
+}
+
+func (h *Handler) authMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if h.cfg.SitePassword == "" {
+			c.Next()
+			return
+		}
+
+		got := c.GetHeader("X-Site-Password")
+		if got == "" {
+			const prefix = "Bearer "
+			auth := c.GetHeader("Authorization")
+			if len(auth) > len(prefix) && auth[:len(prefix)] == prefix {
+				got = auth[len(prefix):]
+			}
+		}
+
+		if subtle.ConstantTimeCompare([]byte(got), []byte(h.cfg.SitePassword)) != 1 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+		c.Next()
+	}
 }

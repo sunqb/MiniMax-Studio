@@ -7,8 +7,9 @@ import (
 
 type Config struct {
 	// MiniMax
-	MinimaxAPIKey  string
-	MinimaxBaseURL string
+	MinimaxAPIKey     string
+	MinimaxPaygAPIKey string // 按量付费 Key，优先用于声音复刻等不走 Token Plan 的能力
+	MinimaxBaseURL    string
 
 	// Cloudflare R2
 	R2AccountID       string
@@ -21,14 +22,16 @@ type Config struct {
 	DBPath string
 
 	// Server
-	Port    string
-	GinMode string
+	Port         string
+	GinMode      string
+	SitePassword string
 }
 
 func Load() (*Config, error) {
 	cfg := &Config{
-		MinimaxAPIKey:  getEnv("MINIMAX_API_KEY", ""),
-		MinimaxBaseURL: getEnv("MINIMAX_BASE_URL", "https://api.minimaxi.com"),
+		MinimaxAPIKey:     getEnv("MINIMAX_API_KEY", ""),
+		MinimaxPaygAPIKey: getEnv("MINIMAX_PAYG_API_KEY", ""),
+		MinimaxBaseURL:    getEnv("MINIMAX_BASE_URL", "https://api.minimaxi.com"),
 		R2AccountID:       getEnv("R2_ACCOUNT_ID", ""),
 		R2AccessKeyID:     getEnv("R2_ACCESS_KEY_ID", ""),
 		R2SecretAccessKey: getEnv("R2_SECRET_ACCESS_KEY", ""),
@@ -37,6 +40,7 @@ func Load() (*Config, error) {
 		DBPath:            getEnv("DB_PATH", "data/history.db"),
 		Port:              getEnv("PORT", "8080"),
 		GinMode:           getEnv("GIN_MODE", "debug"),
+		SitePassword:      getEnv("SITE_PASSWORD", ""),
 	}
 
 	// MiniMax 必填校验

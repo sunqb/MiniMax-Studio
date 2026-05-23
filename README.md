@@ -18,8 +18,10 @@
 | 文本生成 | MiniMax-M2.7 / M2.7-highspeed | 同左 + 其他系列 |
 | 语音合成 | speech-2.8-hd / speech-2.8-turbo（Plus 套餐及以上） | speech-01/02/2.6/2.8 全系列 |
 | 音乐生成 | music-2.6（所有套餐，100首/天限免） | music-2.6-free |
+| 声音复刻 | 不走 Token Plan | 使用按量付费 Key |
 
 > Token Plan Key 与按量付费 API Key 相互独立，请确认使用对应的 Key。
+> 本项目中，声音复刻固定优先使用 `MINIMAX_PAYG_API_KEY`；TTS 使用内置音色时走 `MINIMAX_API_KEY`，使用复刻音色时走 `MINIMAX_PAYG_API_KEY`。
 
 ## 快速开始
 
@@ -33,6 +35,7 @@ cp .env.example .env
 ```env
 # MiniMax（必填）
 MINIMAX_API_KEY=your_token_plan_key_or_api_key
+MINIMAX_PAYG_API_KEY=your_payg_api_key         # 可选但建议配置；声音复刻、复刻音色 TTS 使用
 MINIMAX_BASE_URL=https://api.minimaxi.com   # 可选，默认此值
 
 # Cloudflare R2（必填）
