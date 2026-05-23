@@ -165,10 +165,25 @@ func audioExtFromURL(url string) string {
 	return ""
 }
 
-// ClonedVoiceList 从历史记录中提取所有已复刻的音色 ID（去重，按时间倒序）
+// ClonedVoiceList 返回已知复刻音色 ID：优先使用配置中的手动列表，再补充历史记录。
 func (h *Handler) ClonedVoiceList(c *gin.Context) {
+	seen := map[string]bool{}
+	voices := []string{}
+	addVoice := func(id string) {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			return
+		}
+		seen[id] = true
+		voices = append(voices, id)
+	}
+
+	for _, id := range h.cfg.ClonedVoiceIDs {
+		addVoice(id)
+	}
+
 	if h.hist == nil {
-		c.JSON(http.StatusOK, gin.H{"voices": []string{}})
+		c.JSON(http.StatusOK, gin.H{"voices": voices})
 		return
 	}
 	// 取最近 100 条 clone 记录足够覆盖所有音色
@@ -181,12 +196,9 @@ func (h *Handler) ClonedVoiceList(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	seen := map[string]bool{}
-	voices := []string{}
 	for _, r := range records {
 		if id, ok := r.Params["voice_id"].(string); ok && id != "" && !seen[id] {
-			seen[id] = true
-			voices = append(voices, id)
+			addVoice(id)
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"voices": voices})

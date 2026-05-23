@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 )
 
 type Config struct {
@@ -22,9 +23,10 @@ type Config struct {
 	DBPath string
 
 	// Server
-	Port         string
-	GinMode      string
-	SitePassword string
+	Port           string
+	GinMode        string
+	SitePassword   string
+	ClonedVoiceIDs []string
 }
 
 func Load() (*Config, error) {
@@ -41,6 +43,7 @@ func Load() (*Config, error) {
 		Port:              getEnv("PORT", "8080"),
 		GinMode:           getEnv("GIN_MODE", "debug"),
 		SitePassword:      getEnv("SITE_PASSWORD", ""),
+		ClonedVoiceIDs:    getCSVEnv("CLONED_VOICE_IDS"),
 	}
 
 	// MiniMax 必填校验
@@ -70,4 +73,23 @@ func getEnv(key, defaultVal string) string {
 		return v
 	}
 	return defaultVal
+}
+
+func getCSVEnv(key string) []string {
+	v := os.Getenv(key)
+	if v == "" {
+		return nil
+	}
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	seen := map[string]bool{}
+	for _, part := range parts {
+		item := strings.TrimSpace(part)
+		if item == "" || seen[item] {
+			continue
+		}
+		seen[item] = true
+		out = append(out, item)
+	}
+	return out
 }

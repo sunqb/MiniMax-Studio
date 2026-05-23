@@ -48,6 +48,10 @@ R2_PUBLIC_URL=https://pub-xxx.r2.dev        # R2 公开访问域名
 # 服务器（可选）
 PORT=8080
 GIN_MODE=release
+SITE_PASSWORD=change_me_site_password
+
+# 已复刻音色 ID（可选，逗号分隔；把本地复刻好的 voice_id 填到服务器后即可在列表使用）
+CLONED_VOICE_IDS=my_custom_voice_01,my_custom_voice_02
 ```
 
 ### 2. Docker 运行（推荐）
